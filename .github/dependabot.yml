@@ -1,0 +1,46 @@
+version: 2
+
+multi-ecosystem-groups:
+    dependabot-all:
+        schedule:
+            interval: "monthly"
+            time: "05:30"
+            timezone: "America/Detroit"
+        assignees:
+            - "Nick2bad4u"
+        target-branch: "main"
+        commit-message:
+            prefix: "[dependabot][all]"
+            prefix-development: "[dependabot][dev][all]"
+            include: "scope"
+        labels:
+            - "dependabot"
+            - "dependencies"
+
+updates:
+    - package-ecosystem: "github-actions"
+      directory: "/"
+      cooldown:
+          default-days: 3
+          include: ["*"]
+      multi-ecosystem-group: "dependabot-all"
+      labels:
+          - "github-actions"
+      patterns:
+          - "*"
+
+    - package-ecosystem: "npm"
+      directory: "/"
+      cooldown:
+          default-days: 3
+          include: ["*"]
+      groups:
+          npm-all:
+              applies-to: "version-updates"
+              patterns:
+                  - "*"
+      multi-ecosystem-group: "dependabot-all"
+      labels:
+          - "npm"
+      patterns:
+          - "*"

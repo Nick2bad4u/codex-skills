@@ -1,0 +1,5 @@
+interface:
+    display_name: "Documentation Maintenance"
+    short_description: "Fix docs, TSDoc, TypeDoc, and sites"
+    default_prompt: "Use $documentation-maintenance to audit and update the documentation for this repository."
+    brand_color: "#7C3AED"

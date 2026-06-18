@@ -1,0 +1,5 @@
+interface:
+    display_name: "CI Release Readiness"
+    short_description: "Fix CI failures and verify releases"
+    default_prompt: "Use $ci-release-readiness to debug the failing check or validate this release candidate."
+    brand_color: "#0F766E"

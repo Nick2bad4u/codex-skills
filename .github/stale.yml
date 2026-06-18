@@ -1,0 +1,17 @@
+$schema: "https://json.schemastore.org/stale.json"
+closeComment: "This issue has been automatically closed due to inactivity. If it is still relevant, reopen it with updated information."
+daysUntilClose: 7
+daysUntilStale: 60
+exemptAssignees: true
+exemptLabels:
+    - "pinned"
+    - "security"
+    - "enhancement"
+    - "good first issue"
+    - "help wanted"
+    - "bug"
+    - "feature"
+    - "documentation"
+limitPerRun: 30
+markComment: "This issue has been automatically marked as stale because it has not had recent activity."
+staleLabel: "stale"

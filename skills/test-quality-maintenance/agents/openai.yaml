@@ -1,0 +1,5 @@
+interface:
+    display_name: "Test Quality Maintenance"
+    short_description: "Fix tests and improve coverage"
+    default_prompt: "Use $test-quality-maintenance to add or repair tests and verify the affected behavior."
+    brand_color: "#16A34A"

@@ -1,0 +1,37 @@
+CI/CD:
+    - changed-files:
+          - any-glob-to-any-file:
+                - ".github/workflows/**"
+                - ".github/*.yml"
+                - ".github/*.yaml"
+
+configuration:
+    - changed-files:
+          - any-glob-to-any-file:
+                - "*.json"
+                - "*.mjs"
+                - "*.yml"
+                - "*.yaml"
+                - ".github/labeler.yml"
+
+dependencies:
+    - changed-files:
+          - any-glob-to-any-file:
+                - "package.json"
+                - "package-lock.json"
+
+documentation:
+    - changed-files:
+          - any-glob-to-any-file:
+                - "**/*.md"
+                - "README*"
+
+skills:
+    - changed-files:
+          - any-glob-to-any-file:
+                - "skills/**"
+
+testing:
+    - changed-files:
+          - any-glob-to-any-file:
+                - "tools/**"

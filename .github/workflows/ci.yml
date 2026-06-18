@@ -1,0 +1,38 @@
+name: "CI"
+
+on:
+    pull_request:
+    push:
+        branches:
+            - "main"
+    merge_group:
+        types:
+            - "checks_requested"
+
+concurrency:
+    group: "ci-${{ github.workflow }}-${{ github.ref }}"
+    cancel-in-progress: true
+
+permissions:
+    contents: "read"
+
+jobs:
+    validate:
+        name: "Validate"
+        runs-on: "ubuntu-latest"
+        timeout-minutes: 15
+        steps:
+            - name: "Checkout"
+              uses: "actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10" # v6.0.3
+
+            - name: "Setup Node"
+              uses: "actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020" # v4.4.0
+              with:
+                  node-version: "22"
+                  cache: "npm"
+
+            - name: "Install"
+              run: "npm ci"
+
+            - name: "Validate"
+              run: "npm run release:verify"
