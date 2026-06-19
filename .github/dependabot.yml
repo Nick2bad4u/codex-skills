@@ -44,3 +44,4 @@ updates:
           - "npm"
       patterns:
           - "*"
+      versioning-strategy: "increase"

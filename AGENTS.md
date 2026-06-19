@@ -18,6 +18,6 @@ This repository stores multiple personal Codex skills under `skills/<skill-name>
 
 - Validate with `npm run validate` after skill changes.
 - Run `npm run format:check` before committing.
-- Do not add npm publishing workflows until the owner explicitly decides to publish.
-- Do not remove installed skills from `C:\Users\Nick\.agents\skills` unless explicitly requested.
+- Do not add or change npm publishing behavior unless the owner explicitly decides to publish.
+- Do not remove installed skills from the user's home-level `.agents/skills` directory unless explicitly requested.
 - Prefer focused edits. Avoid turning this repo into a dump of one-off prompts.

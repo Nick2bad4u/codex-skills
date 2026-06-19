@@ -1,0 +1,27 @@
+---
+name: "Bug report"
+about: "Report a problem with the skill package"
+title: ""
+labels: "bug"
+assignees: ""
+---
+
+# Bug Report
+
+## Problem
+
+Describe the problem and the command or workflow that exposed it.
+
+## Expected Behavior
+
+Describe what should have happened.
+
+## Environment
+
+- OS:
+- Codex or agent version:
+- Repository type:
+
+## Additional Context
+
+Include relevant logs, screenshots, or reproduction steps.

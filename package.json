@@ -1,7 +1,7 @@
 {
-    "name": "codex-skills",
+    "name": "@nick2bad4u/codex-skills",
     "version": "0.1.0",
-    "private": true,
+    "private": false,
     "description": "Personal multi-skill repository for reusable Codex workflows.",
     "keywords": [
         "agent-skill",
@@ -33,30 +33,76 @@
     "files": [
         "skills/",
         "tools/",
+        "AGENTS.md",
+        "CHANGELOG.md",
+        "CODE_OF_CONDUCT.md",
+        "CONTRIBUTING.md",
         "README.md",
+        "SECURITY.md",
+        "SUPPORT.md",
+        "LICENSE",
         "LICENSE.txt",
+        "cliff.toml",
+        "tsconfig.json",
+        "tsdoc.json",
         "types.d.ts"
     ],
     "scripts": {
         "format": "prettier --write .",
         "format:check": "prettier --check .",
         "install:local": "npx skills add . -g --agent universal --copy -y",
+        "lint": "eslint --cache --cache-strategy content --cache-location .cache/.eslintcache",
+        "lint:actions": "actionlint",
+        "lint:all": "npm run lint && npm run lint:package-json && npm run lint:remark && npm run lint:secretlint && npm run lint:stylelint && npm run lint:tsdoc && npm run lint:yamllint",
+        "lint:external": "npm run lint:actions && npm run lint:gitleaks",
         "lint:gitleaks": "gitleaks dir --config .gitleaks.toml .",
         "lint:package-json": "npmPkgJsonLint . --config .npmpackagejsonlintrc.json",
+        "lint:remark": "remark . --frail --ignore-path .remarkignore",
+        "lint:remark:fix": "remark . --ignore-path .remarkignore --output",
+        "lint:secretlint": "secretlint .",
+        "lint:stylelint": "stylelint \"**/*.{css,scss}\" --allow-empty-input",
+        "lint:tsdoc": "node tools/validate-tsdoc-config.mjs",
         "lint:yamllint": "yamllint -c .yamllint .",
-        "release:verify": "npm run validate && npm run lint:package-json && npm run lint:yamllint && npm run format:check",
+        "pack:dry-run": "npm pack --dry-run",
+        "publish:local": "npm run release:verify && npm publish --access public",
+        "release:verify": "npm run validate && npm run typecheck && npm run lint:all && npm run format:check && npm run pack:dry-run",
+        "typecheck": "tsc --noEmit -p tsconfig.json",
         "update-actions": "npx actions-up --yes --style sha",
+        "update-deps": "npx ncu -i --install never && npm update --force && npm install --force",
         "validate": "node tools/validate-skills.mjs"
     },
+    "overrides": {
+        "esbuild": "0.28.1",
+        "remark-lint-frontmatter-schema": {
+            "@apidevtools/json-schema-ref-parser": "11.9.3",
+            "ajv": "8.20.0",
+            "minimatch": "9.0.7",
+            "yaml": "2.8.3"
+        }
+    },
     "devDependencies": {
+        "@microsoft/tsdoc-config": "^0.18.1",
+        "eslint-config-nick2bad4u": "^2.0.2",
         "gitleaks-config-nick2bad4u": "^1.0.2",
-        "npm-package-json-lint": "^10.4.0",
-        "npm-package-json-lint-config-nick2bad4u": "^1.0.2",
+        "npm-package-json-lint": "^10.4.1",
+        "npm-package-json-lint-config-nick2bad4u": "^1.0.3",
         "prettier": "^3.8.4",
-        "prettier-config-nick2bad4u": "^1.0.16",
-        "yamllint-config-nick2bad4u": "^1.0.1"
+        "prettier-config-nick2bad4u": "^1.0.17",
+        "remark": "^15.0.1",
+        "remark-cli": "^12.0.1",
+        "remark-config-nick2bad4u": "^1.0.8",
+        "secretlint": "^13.0.2",
+        "secretlint-config-nick2bad4u": "^1.1.0",
+        "stylelint": "^17.13.0",
+        "stylelint-config-nick2bad4u": "^1.0.19",
+        "tsdoc-config-nick2bad4u": "^1.0.5",
+        "yamllint-config-nick2bad4u": "^1.0.2"
     },
     "engines": {
-        "node": ">=22.14"
+        "node": ">=22.16.0"
+    },
+    "publishConfig": {
+        "access": "public",
+        "provenance": true
     }
 }

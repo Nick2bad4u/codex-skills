@@ -1,5 +1,5 @@
 interface:
+    brand_color: "#EA580C"
+    default_prompt: "Use $workspace-continuation to resume this task from the current workspace state."
     display_name: "Workspace Continuation"
     short_description: "Continue work, plans, or handoffs"
-    default_prompt: "Use $workspace-continuation to resume this task from the current workspace state."
-    brand_color: "#EA580C"

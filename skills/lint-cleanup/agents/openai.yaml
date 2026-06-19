@@ -1,5 +1,5 @@
 interface:
+    brand_color: "#DC2626"
+    default_prompt: "Use $lint-cleanup to fix the lint issues and verify a clean rerun."
     display_name: "Lint Cleanup"
     short_description: "Fix lint failures without shortcuts"
-    default_prompt: "Use $lint-cleanup to fix the lint issues and verify a clean rerun."
-    brand_color: "#DC2626"

@@ -29,7 +29,7 @@ Use this skill for GitHub Actions failures, release checks, dependency-update fa
 
 - Do not publish, tag, or bump versions unless the user explicitly asks.
 - Do not weaken rules, delete tests, pin around an update, or add suppressions without a specific defensible reason.
-- If a blocker is external, credential-related, network-related, or pre-existing, isolate it clearly and keep going with the closest local validation.
+- If a blocker is external, credential-related, network-related, or pre-existing, isolate it precisely and keep going with the closest local validation.
 
 ## Output
 

@@ -1,5 +1,5 @@
 interface:
+    brand_color: "#2563EB"
+    default_prompt: "Use $code-review-maintenance to review this repository or file and handle high-confidence issues."
     display_name: "Code Review Maintenance"
     short_description: "Review code and fix high-confidence risks"
-    default_prompt: "Use $code-review-maintenance to review this repository or file and handle high-confidence issues."
-    brand_color: "#2563EB"

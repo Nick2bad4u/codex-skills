@@ -1,5 +1,8 @@
 # Codex Skills
 
+[![CI](https://github.com/Nick2bad4u/codex-skills/actions/workflows/ci.yml/badge.svg)](https://github.com/Nick2bad4u/codex-skills/actions/workflows/ci.yml)
+[![npm](https://img.shields.io/npm/v/@nick2bad4u/codex-skills.svg)](https://www.npmjs.com/package/@nick2bad4u/codex-skills)
+
 Personal multi-skill repository for reusable Codex workflows that are useful locally but not ready to publish as standalone packages.
 
 ## Skills

@@ -1,5 +1,5 @@
 interface:
+    brand_color: "#0EA5E9"
+    default_prompt: "Use $stylelint-plugin-maintenance to build, audit, or update this Stylelint plugin repository."
     display_name: "Stylelint Plugin Maintenance"
     short_description: "Bootstrap and maintain Stylelint plugins"
-    default_prompt: "Use $stylelint-plugin-maintenance to build, audit, or update this Stylelint plugin repository."
-    brand_color: "#0EA5E9"
