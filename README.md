@@ -1,7 +1,6 @@
 # Codex Skills
 
-[![CI](https://github.com/Nick2bad4u/codex-skills/actions/workflows/ci.yml/badge.svg)](https://github.com/Nick2bad4u/codex-skills/actions/workflows/ci.yml)
-[![npm](https://img.shields.io/npm/v/@nick2bad4u/codex-skills.svg)](https://www.npmjs.com/package/@nick2bad4u/codex-skills)
+[![NPM license.](https://flat.badgen.net/npm/license/@typpi/codex-skills?color=purple)](https://github.com/Nick2bad4u/codex-skills/blob/main/LICENSE) [![NPM total downloads.](https://flat.badgen.net/npm/dt/@typpi/codex-skills?color=pink)](https://www.npmjs.com/package/@typpi/codex-skills) [![Latest GitHub release.](https://flat.badgen.net/github/release/Nick2bad4u/codex-skills?color=cyan)](https://github.com/Nick2bad4u/codex-skills/releases) [![GitHub stars.](https://flat.badgen.net/github/stars/Nick2bad4u/codex-skills?color=yellow)](https://github.com/Nick2bad4u/codex-skills/stargazers) [![GitHub forks.](https://flat.badgen.net/github/forks/Nick2bad4u/codex-skills?color=orange)](https://github.com/Nick2bad4u/codex-skills/forks) [![GitHub open issues.](https://flat.badgen.net/github/open-issues/Nick2bad4u/codex-skills?color=red)](https://github.com/Nick2bad4u/codex-skills/issues) [![Codecov.](https://flat.badgen.net/codecov/github/Nick2bad4u/codex-skills?color=blue)](https://codecov.io/gh/Nick2bad4u/codex-skills) [![Repo Checks.](https://flat.badgen.net/github/checks/nick2bad4u/codex-skills?color=green)](https://github.com/Nick2bad4u/codex-skills/actions)
 
 Personal multi-skill repository for reusable Codex workflows that are useful locally but not ready to publish as standalone packages.
 
