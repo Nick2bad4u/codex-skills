@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" role="img" viewBox="0 0 512 512" width="96" height="96">
+  <title>Stylelint Plugin Maintenance</title>
+  <rect width="512" height="512" rx="96" fill="#0f172a"/>
+  <path d="M96 416L416 96" stroke="#0EA5E9" stroke-width="120" stroke-linecap="round" opacity="0.18"/>
+  <circle cx="256" cy="256" r="168" fill="#0EA5E9" opacity="0.18"/>
+  <path d="M144 336c64-128 128-160 224-160M176 360c64 32 144 24 192-48M144 184c48-48 144-64 224-24" fill="none" stroke="#0EA5E9" stroke-width="32" stroke-linecap="round" stroke-linejoin="round"/>
+
+</svg>

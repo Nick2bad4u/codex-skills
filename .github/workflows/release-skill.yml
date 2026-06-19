@@ -140,11 +140,21 @@ jobs:
             - name: "Validate npm package"
               run: "npm run release:verify"
 
+            - name: "Generate release notes"
+              id: "git-cliff"
+              uses: "orhun/git-cliff-action@f50e11560dce63f7c33227798f90b924471a88b5" # v4
+              with:
+                  config: "cliff.toml"
+                  args: "--verbose --tag ${{ steps.vars.outputs.tag }} --strip header"
+              env:
+                  OUTPUT: "release-notes.md"
+                  GITHUB_REPO: "${{ github.repository }}"
+
             - name: "Build release bundle"
               run: |
                   mkdir -p dist
                   zip -r "dist/${{ steps.vars.outputs.asset }}" \
-                    skills tools README.md AGENTS.md LICENSE LICENSE.txt package.json types.d.ts
+                    skills schemas tools README.md AGENTS.md LICENSE LICENSE.txt package.json types.d.ts
 
             - name: "Upload workflow artifact"
               uses: "actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a" # v7.0.1
@@ -162,7 +172,7 @@ jobs:
                   if npm view "${PACKAGE_NAME}@${VERSION}" version >/dev/null 2>&1; then
                     echo "${PACKAGE_NAME}@${VERSION} is already published; skipping npm publish."
                   else
-                    npm publish --access public
+                    npm publish --access public --provenance
                   fi
 
             - name: "Publish GitHub release asset"
@@ -170,10 +180,12 @@ jobs:
                   GH_TOKEN: "${{ secrets.GITHUB_TOKEN }}"
                   TAG: "${{ steps.vars.outputs.tag }}"
                   ASSET: "dist/${{ steps.vars.outputs.asset }}"
+                  NOTES: "${{ steps.git-cliff.outputs.changelog }}"
                   TARGET: "${{ steps.vars.outputs.target }}"
               run: |
                   if gh release view "$TAG" >/dev/null 2>&1; then
+                    gh release edit "$TAG" --notes-file "$NOTES"
                     gh release upload "$TAG" "$ASSET" --clobber
                   else
-                    gh release create "$TAG" "$ASSET" --target "$TARGET" --title "$TAG" --generate-notes
+                    gh release create "$TAG" "$ASSET" --target "$TARGET" --title "$TAG" --notes-file "$NOTES"
                   fi

@@ -1,5 +1,8 @@
+# yaml-language-server: $schema=https://json.schemastore.org/codex-skill-metadata.json
 interface:
     brand_color: "#0F766E"
     default_prompt: "Use $ci-release-readiness to debug the failing check or validate this release candidate."
     display_name: "CI Release Readiness"
+    icon_large: "./assets/ci-release-readiness.svg"
+    icon_small: "./assets/ci-release-readiness-small.svg"
     short_description: "Fix CI failures and verify releases"

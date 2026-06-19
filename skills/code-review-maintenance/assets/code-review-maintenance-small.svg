@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" role="img" viewBox="0 0 512 512" width="96" height="96">
+  <title>Code Review Maintenance</title>
+  <rect width="512" height="512" rx="96" fill="#0f172a"/>
+  <path d="M96 416L416 96" stroke="#2563EB" stroke-width="120" stroke-linecap="round" opacity="0.18"/>
+  <circle cx="256" cy="256" r="168" fill="#2563EB" opacity="0.18"/>
+  <path d="M152 176l-56 80 56 80M360 176l56 80-56 80M216 360l80-208" fill="none" stroke="#2563EB" stroke-width="32" stroke-linecap="round" stroke-linejoin="round"/>
+
+</svg>

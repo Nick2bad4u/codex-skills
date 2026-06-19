@@ -3,6 +3,8 @@ import * as path from "node:path";
 
 const root = process.cwd();
 const skillsRoot = path.join(root, "skills");
+const openaiYamlSchemaComment =
+    "# yaml-language-server: $schema=https://json.schemastore.org/codex-skill-metadata.json";
 
 /**
  * @param {unknown} condition
@@ -23,6 +25,21 @@ function assert(condition, message) {
  */
 async function assertFile(filePath) {
     await access(filePath);
+}
+
+/**
+ * @param {string} skillDir
+ * @param {string} assetPath
+ * @param {string} message
+ *
+ * @returns {Promise<void>}
+ */
+async function assertRelativeAsset(skillDir, assetPath, message) {
+    assert(assetPath.startsWith("./assets/"), message);
+    assert(!assetPath.includes(".."), message);
+
+    const normalizedAssetPath = assetPath.slice("./".length).split("/");
+    await assertFile(path.join(skillDir, ...normalizedAssetPath));
 }
 
 /**
@@ -165,7 +182,14 @@ async function validateSkill(skillName) {
     const openaiYaml = await readFile(openaiYamlPath, "utf8");
     const defaultPrompt = yamlValue(openaiYaml, "default_prompt");
     const displayName = yamlValue(openaiYaml, "display_name");
+    const iconLarge = yamlValue(openaiYaml, "icon_large");
+    const iconSmall = yamlValue(openaiYaml, "icon_small");
     const shortDescription = yamlValue(openaiYaml, "short_description");
+
+    assert(
+        linesOf(openaiYaml)[0] === openaiYamlSchemaComment,
+        `${skillName} agents/openai.yaml must declare the Codex skill metadata schema`
+    );
 
     assert(
         displayName !== undefined && displayName.length > 0,
@@ -179,6 +203,28 @@ async function validateSkill(skillName) {
         defaultPrompt?.includes(`$${skillName}`) === true,
         `${skillName} default_prompt must mention $${skillName}`
     );
+
+    assert(
+        iconLarge !== undefined && iconLarge.length > 0,
+        `${skillName} agents/openai.yaml must define icon_large`
+    );
+    assert(
+        iconSmall !== undefined && iconSmall.length > 0,
+        `${skillName} agents/openai.yaml must define icon_small`
+    );
+
+    await Promise.all([
+        assertRelativeAsset(
+            skillDir,
+            iconLarge,
+            `${skillName} icon_large must point to an existing ./assets/ file`
+        ),
+        assertRelativeAsset(
+            skillDir,
+            iconSmall,
+            `${skillName} icon_small must point to an existing ./assets/ file`
+        ),
+    ]);
 }
 
 /**

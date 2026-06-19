@@ -1,0 +1,22 @@
+{
+    "$id": "https://github.com/Nick2bad4u/codex-skills/schemas/skill-frontmatter.schema.json",
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "additionalProperties": false,
+    "description": "Repository-local schema for Codex skill frontmatter. Official Codex docs require name and description.",
+    "properties": {
+        "description": {
+            "maxLength": 1024,
+            "minLength": 80,
+            "type": "string"
+        },
+        "name": {
+            "maxLength": 64,
+            "minLength": 1,
+            "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$",
+            "type": "string"
+        }
+    },
+    "required": ["name", "description"],
+    "title": "Codex SKILL.md frontmatter",
+    "type": "object"
+}

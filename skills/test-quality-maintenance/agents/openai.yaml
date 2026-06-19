@@ -1,5 +1,8 @@
+# yaml-language-server: $schema=https://json.schemastore.org/codex-skill-metadata.json
 interface:
     brand_color: "#16A34A"
     default_prompt: "Use $test-quality-maintenance to add or repair tests and verify the affected behavior."
     display_name: "Test Quality Maintenance"
+    icon_large: "./assets/test-quality-maintenance.svg"
+    icon_small: "./assets/test-quality-maintenance-small.svg"
     short_description: "Fix tests and improve coverage"

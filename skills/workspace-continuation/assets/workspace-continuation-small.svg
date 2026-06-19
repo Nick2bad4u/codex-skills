@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" role="img" viewBox="0 0 512 512" width="96" height="96">
+  <title>Workspace Continuation</title>
+  <rect width="512" height="512" rx="96" fill="#0f172a"/>
+  <path d="M96 416L416 96" stroke="#EA580C" stroke-width="120" stroke-linecap="round" opacity="0.18"/>
+  <circle cx="256" cy="256" r="168" fill="#EA580C" opacity="0.18"/>
+  <path d="M152 176h136c56 0 96 40 96 88s-40 88-96 88H168M152 176l64-64M152 176l64 64" fill="none" stroke="#EA580C" stroke-width="32" stroke-linecap="round" stroke-linejoin="round"/>
+
+</svg>

@@ -1,8 +1,17 @@
 import { createConfig } from "remark-config-nick2bad4u";
 
-/** @type {import("remark-config-nick2bad4u").RemarkConfig} */
+const frontmatterSchemaPlugin =
+    /** @type {import("remark-config-nick2bad4u").RemarkConfig["plugins"][number]} */ ([
+        "remark-lint-frontmatter-schema",
+        {
+            schemas: {
+                "schemas/skill-frontmatter.schema.json": ["skills/*/SKILL.md"],
+            },
+        },
+    ]);
+
 const remarkConfig = createConfig({
-    plugins: [],
+    plugins: [frontmatterSchemaPlugin],
     settings: {},
 });
 

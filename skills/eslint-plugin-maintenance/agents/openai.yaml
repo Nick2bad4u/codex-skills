@@ -1,5 +1,8 @@
+# yaml-language-server: $schema=https://json.schemastore.org/codex-skill-metadata.json
 interface:
     brand_color: "#4F46E5"
     default_prompt: "Use $eslint-plugin-maintenance to build, audit, or update this ESLint plugin repository."
     display_name: "ESLint Plugin Maintenance"
+    icon_large: "./assets/eslint-plugin-maintenance.svg"
+    icon_small: "./assets/eslint-plugin-maintenance-small.svg"
     short_description: "Bootstrap and maintain ESLint plugins"

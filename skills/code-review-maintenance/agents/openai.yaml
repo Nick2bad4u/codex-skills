@@ -1,5 +1,8 @@
+# yaml-language-server: $schema=https://json.schemastore.org/codex-skill-metadata.json
 interface:
     brand_color: "#2563EB"
     default_prompt: "Use $code-review-maintenance to review this repository or file and handle high-confidence issues."
     display_name: "Code Review Maintenance"
+    icon_large: "./assets/code-review-maintenance.svg"
+    icon_small: "./assets/code-review-maintenance-small.svg"
     short_description: "Review code and fix high-confidence risks"
