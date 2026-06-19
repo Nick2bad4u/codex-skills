@@ -69,10 +69,14 @@ jobs:
 
             - name: "Resolve release tag"
               id: "vars"
+              env:
+                  EVENT_NAME: "${{ github.event_name }}"
+                  INPUT_RELEASE_TYPE: "${{ inputs.release_type }}"
+                  INPUT_VERSION: "${{ inputs.version }}"
               run: |
-                  if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-                    EXPLICIT_VERSION="${{ inputs.version }}"
-                    RELEASE_TYPE="${{ inputs.release_type }}"
+                  if [ "${EVENT_NAME}" = "workflow_dispatch" ]; then
+                    EXPLICIT_VERSION="${INPUT_VERSION}"
+                    RELEASE_TYPE="${INPUT_RELEASE_TYPE}"
 
                     if [ -n "${EXPLICIT_VERSION}" ]; then
                       if ! [[ "${EXPLICIT_VERSION}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
