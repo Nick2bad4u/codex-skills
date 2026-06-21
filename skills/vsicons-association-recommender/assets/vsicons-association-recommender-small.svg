@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" role="img" viewBox="0 0 512 512" width="96" height="96">
+  <title>VSIcons Association Recommender</title>
+  <rect width="512" height="512" rx="96" fill="#0f172a"/>
+  <path d="M96 416L416 96" stroke="#2563EB" stroke-width="120" stroke-linecap="round" opacity="0.18"/>
+  <circle cx="256" cy="256" r="168" fill="#2563EB" opacity="0.18"/>
+  <path d="M144 152h224M144 216h160M144 280h224M176 368h112M344 344l40 40 72-104" fill="none" stroke="#2563EB" stroke-width="32" stroke-linecap="round" stroke-linejoin="round"/>
+
+</svg>

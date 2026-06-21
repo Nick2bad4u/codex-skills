@@ -1,0 +1,8 @@
+# yaml-language-server: $schema=https://json.schemastore.org/codex-skill-metadata.json
+interface:
+    brand_color: "#2563EB"
+    default_prompt: "Use $vsicons-association-recommender to recommend vscode-icons associations for this workspace."
+    display_name: "VSIcons Association Recommender"
+    icon_large: "./assets/vsicons-association-recommender.svg"
+    icon_small: "./assets/vsicons-association-recommender-small.svg"
+    short_description: "Recommend vscode-icons settings blocks"

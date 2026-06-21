@@ -98,6 +98,15 @@ const skills = [
         title: "TQ",
     },
     {
+        accent: "#2563EB",
+        displayName: "VSIcons Association Recommender",
+        glyph: "M144 152h224M144 216h160M144 280h224M176 368h112M344 344l40 40 72-104",
+        name: "vsicons-association-recommender",
+        prompt: "Use $vsicons-association-recommender to recommend vscode-icons associations for this workspace.",
+        shortDescription: "Recommend vscode-icons settings blocks",
+        title: "VS",
+    },
+    {
         accent: "#EA580C",
         displayName: "Workspace Continuation",
         glyph: "M152 176h136c56 0 96 40 96 88s-40 88-96 88H168M152 176l64-64M152 176l64 64",
