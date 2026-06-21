@@ -8,6 +8,24 @@ const schemaComment =
 
 const skills = [
     {
+        accent: "#0891B2",
+        displayName: "Agent Skill Instruction Creation",
+        glyph: "M152 168h208M152 232h152M152 296h208M184 376l64-64 40 40 72-96",
+        name: "agent-skill-instruction-creation",
+        prompt: "Use $agent-skill-instruction-creation to create agent skills or instructions for this project.",
+        shortDescription: "Create skills and agent instructions",
+        title: "AC",
+    },
+    {
+        accent: "#9333EA",
+        displayName: "Agent Skill Instruction Review",
+        glyph: "M152 160h160M152 224h208M152 288h128M328 312l40 40 80-104",
+        name: "agent-skill-instruction-review",
+        prompt: "Use $agent-skill-instruction-review to review this repository's agent skills and instructions.",
+        shortDescription: "Audit skills and agent instructions",
+        title: "SR",
+    },
+    {
         accent: "#0F766E",
         displayName: "CI Release Readiness",
         glyph: "M144 304h224M176 240l56 56 112-128M120 392h272",
@@ -51,6 +69,15 @@ const skills = [
         prompt: "Use $lint-cleanup to fix the lint issues and verify a clean rerun.",
         shortDescription: "Fix lint failures without shortcuts",
         title: "LC",
+    },
+    {
+        accent: "#F59E0B",
+        displayName: "Remark Plugin Maintenance",
+        glyph: "M152 152h208M152 216h152M152 280h208M184 360h144M344 344l40 40 72-104",
+        name: "remark-plugin-maintenance",
+        prompt: "Use $remark-plugin-maintenance to build, audit, or update this remark plugin repository.",
+        shortDescription: "Bootstrap and maintain remark plugins",
+        title: "RM",
     },
     {
         accent: "#0EA5E9",

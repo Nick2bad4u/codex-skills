@@ -1,0 +1,8 @@
+# yaml-language-server: $schema=https://json.schemastore.org/codex-skill-metadata.json
+interface:
+    brand_color: "#9333EA"
+    default_prompt: "Use $agent-skill-instruction-review to review this repository's agent skills and instructions."
+    display_name: "Agent Skill Instruction Review"
+    icon_large: "./assets/agent-skill-instruction-review.svg"
+    icon_small: "./assets/agent-skill-instruction-review-small.svg"
+    short_description: "Audit skills and agent instructions"

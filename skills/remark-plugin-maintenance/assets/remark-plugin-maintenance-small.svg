@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" role="img" viewBox="0 0 512 512" width="96" height="96">
+  <title>Remark Plugin Maintenance</title>
+  <rect width="512" height="512" rx="96" fill="#0f172a"/>
+  <path d="M96 416L416 96" stroke="#F59E0B" stroke-width="120" stroke-linecap="round" opacity="0.18"/>
+  <circle cx="256" cy="256" r="168" fill="#F59E0B" opacity="0.18"/>
+  <path d="M152 152h208M152 216h152M152 280h208M184 360h144M344 344l40 40 72-104" fill="none" stroke="#F59E0B" stroke-width="32" stroke-linecap="round" stroke-linejoin="round"/>
+
+</svg>
