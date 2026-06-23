@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" role="img" viewBox="0 0 512 512" width="512" height="512">
+  <title>GitHub Actions Workflow Maintenance</title>
+  <rect width="512" height="512" rx="96" fill="#0f172a"/>
+  <path d="M96 416L416 96" stroke="#2DA44E" stroke-width="120" stroke-linecap="round" opacity="0.16"/>
+  <circle cx="256" cy="256" r="168" fill="#2DA44E" opacity="0.18"/>
+  <path d="M152 160h208M152 224h208M152 288h128M336 288l32 32 64-80M168 352h112" fill="none" stroke="#2DA44E" stroke-width="18" stroke-linecap="round" stroke-linejoin="round"/>
+  <text x="256" y="116" text-anchor="middle" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="52" font-weight="800" fill="#f8fafc">GA</text>
+
+</svg>

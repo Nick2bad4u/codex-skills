@@ -10,6 +10,7 @@ Personal multi-skill repository for reusable Codex workflows that are useful loc
 - `code-review-maintenance`: review code, triage review claims, normalize drift, and fix brittle paths.
 - `documentation-maintenance`: maintain docs, TSDoc, TypeDoc, and Docusaurus sites.
 - `eslint-plugin-maintenance`: bootstrap, audit, and maintain ESLint plugin repositories.
+- `github-actions-workflow-maintenance`: create, review, edit, and harden GitHub Actions workflows.
 - `lint-cleanup`: fix lint and ESLint diagnostics without weakening rules.
 - `stylelint-plugin-maintenance`: bootstrap, audit, and maintain Stylelint plugin repositories.
 - `test-quality-maintenance`: add, repair, and improve tests, coverage, e2e, and benchmarks.

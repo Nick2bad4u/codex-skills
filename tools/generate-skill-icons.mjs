@@ -62,6 +62,15 @@ const skills = [
         title: "ES",
     },
     {
+        accent: "#2DA44E",
+        displayName: "GitHub Actions Workflow Maintenance",
+        glyph: "M152 160h208M152 224h208M152 288h128M336 288l32 32 64-80M168 352h112",
+        name: "github-actions-workflow-maintenance",
+        prompt: "Use $github-actions-workflow-maintenance to create, review, or repair GitHub Actions workflows.",
+        shortDescription: "Create, review, and repair workflows",
+        title: "GA",
+    },
+    {
         accent: "#DC2626",
         displayName: "Lint Cleanup",
         glyph: "M160 160h192M160 224h152M160 288h192M184 360l48 48 96-112",

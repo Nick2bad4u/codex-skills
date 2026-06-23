@@ -77,13 +77,7 @@
         "validate": "node tools/validate-skills.mjs"
     },
     "overrides": {
-        "esbuild": "0.28.1",
-        "remark-lint-frontmatter-schema": {
-            "@apidevtools/json-schema-ref-parser": "11.9.3",
-            "ajv": "8.20.0",
-            "minimatch": "9.0.7",
-            "yaml": "2.8.3"
-        }
+        "esbuild": "0.28.1"
     },
     "devDependencies": {
         "@microsoft/tsdoc-config": "^0.18.1",
@@ -97,7 +91,7 @@
         "prettier-config-nick2bad4u": "^1.0.17",
         "remark": "^15.0.1",
         "remark-cli": "^12.0.1",
-        "remark-config-nick2bad4u": "^1.0.8",
+        "remark-config-nick2bad4u": "^1.0.10",
         "remark-lint-frontmatter-schema": "^3.15.4",
         "secretlint": "^13.0.2",
         "secretlint-config-nick2bad4u": "^1.1.0",
