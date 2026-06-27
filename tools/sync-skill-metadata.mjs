@@ -55,6 +55,9 @@ const skills = [
         glyph: "M144 304h224M176 240l56 56 112-128M120 392h272",
         longTitle: "CI Release Readiness",
         name: "ci-release-readiness",
+        policy: {
+            allowImplicitInvocation: false,
+        },
         prompt: "Use $ci-release-readiness to debug the failing check or validate this release candidate.",
         shortDescription: "Fix CI failures and verify releases",
         shortTitle: "🚦",

@@ -49,6 +49,7 @@
         "types.d.ts"
     ],
     "scripts": {
+        "audit:skills": "node tools/audit-skills.mjs",
         "changelog:generate": "git-cliff --config cliff.toml --output CHANGELOG.md",
         "changelog:preview": "git-cliff --config cliff.toml --unreleased",
         "changelog:release-notes": "git-cliff --config cliff.toml --current --strip all",

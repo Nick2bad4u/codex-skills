@@ -6,3 +6,6 @@ interface:
     icon_large: "./assets/ci-release-readiness.svg"
     icon_small: "./assets/ci-release-readiness-small.svg"
     short_description: "Fix CI failures and verify releases"
+
+policy:
+    allow_implicit_invocation: false
