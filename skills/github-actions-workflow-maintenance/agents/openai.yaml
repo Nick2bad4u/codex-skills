@@ -1,6 +1,6 @@
 # yaml-language-server: $schema=https://json.schemastore.org/codex-skill-metadata.json
 interface:
-    brand_color: "#2DA44E"
+    brand_color: "#374151"
     default_prompt: "Use $github-actions-workflow-maintenance to create, review, or repair GitHub Actions workflows."
     display_name: "GitHub Actions Workflow Maintenance"
     icon_large: "./assets/github-actions-workflow-maintenance.svg"

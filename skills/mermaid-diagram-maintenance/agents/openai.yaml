@@ -1,0 +1,8 @@
+# yaml-language-server: $schema=https://json.schemastore.org/codex-skill-metadata.json
+interface:
+    brand_color: "#f5346e"
+    default_prompt: "Use $mermaid-diagram-maintenance to create or improve Mermaid diagrams for this project."
+    display_name: "Mermaid Diagram Maintenance"
+    icon_large: "./assets/mermaid-diagram-maintenance.svg"
+    icon_small: "./assets/mermaid-diagram-maintenance-small.svg"
+    short_description: "Create and theme Mermaid diagrams"

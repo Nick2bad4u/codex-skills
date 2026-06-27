@@ -1,6 +1,6 @@
 # yaml-language-server: $schema=https://json.schemastore.org/codex-skill-metadata.json
 interface:
-    brand_color: "#DC2626"
+    brand_color: "#e2e616"
     default_prompt: "Use $lint-cleanup to fix the lint issues and verify a clean rerun."
     display_name: "Lint Cleanup"
     icon_large: "./assets/lint-cleanup.svg"

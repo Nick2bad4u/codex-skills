@@ -6,3 +6,6 @@ interface:
     icon_large: "./assets/vsicons-association-recommender.svg"
     icon_small: "./assets/vsicons-association-recommender-small.svg"
     short_description: "Recommend vscode-icons settings blocks"
+
+policy:
+    allow_implicit_invocation: false

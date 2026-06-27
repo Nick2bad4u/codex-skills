@@ -12,8 +12,13 @@ Personal multi-skill repository for reusable Codex workflows that are useful loc
 - `eslint-plugin-maintenance`: bootstrap, audit, and maintain ESLint plugin repositories.
 - `github-actions-workflow-maintenance`: create, review, edit, and harden GitHub Actions workflows.
 - `lint-cleanup`: fix lint and ESLint diagnostics without weakening rules.
+- `mermaid-diagram-maintenance`: create, edit, review, and dark-theme Mermaid diagrams.
+- `prettier-plugin-maintenance`: bootstrap, audit, and maintain Prettier plugin repositories.
+- `release-publish-loop`: push release candidates, watch CI, and publish verified releases.
+- `remark-plugin-maintenance`: bootstrap, audit, and maintain remark and remark-lint plugins.
 - `stylelint-plugin-maintenance`: bootstrap, audit, and maintain Stylelint plugin repositories.
 - `test-quality-maintenance`: add, repair, and improve tests, coverage, e2e, and benchmarks.
+- `vsicons-association-recommender`: recommend vscode-icons associations for workspace files.
 - `workspace-continuation`: continue active work, implement plans, and write handoffs.
 
 ## Install Locally

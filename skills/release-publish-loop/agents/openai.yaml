@@ -1,0 +1,11 @@
+# yaml-language-server: $schema=https://json.schemastore.org/codex-skill-metadata.json
+interface:
+    brand_color: "#059669"
+    default_prompt: "Use $release-publish-loop to push this release candidate, watch CI, and publish it when ready."
+    display_name: "Release Publish Loop"
+    icon_large: "./assets/release-publish-loop.svg"
+    icon_small: "./assets/release-publish-loop-small.svg"
+    short_description: "Push, watch CI, and publish releases"
+
+policy:
+    allow_implicit_invocation: false

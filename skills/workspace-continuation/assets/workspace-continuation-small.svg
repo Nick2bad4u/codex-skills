@@ -1,8 +1,45 @@
 <svg xmlns="http://www.w3.org/2000/svg" role="img" viewBox="0 0 512 512" width="96" height="96">
   <title>Workspace Continuation</title>
-  <rect width="512" height="512" rx="96" fill="#0f172a"/>
-  <path d="M96 416L416 96" stroke="#EA580C" stroke-width="120" stroke-linecap="round" opacity="0.18"/>
-  <circle cx="256" cy="256" r="168" fill="#EA580C" opacity="0.18"/>
-  <path d="M152 176h136c56 0 96 40 96 88s-40 88-96 88H168M152 176l64-64M152 176l64 64" fill="none" stroke="#EA580C" stroke-width="32" stroke-linecap="round" stroke-linejoin="round"/>
+  <defs>
+    <linearGradient id="skill-workspace-continuation-small-bg" x1="64" y1="32" x2="448" y2="480" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#111827"/>
+      <stop offset="0.52" stop-color="#020617"/>
+      <stop offset="1" stop-color="#0f172a"/>
+    </linearGradient>
+    <linearGradient id="skill-workspace-continuation-small-accent" x1="112" y1="96" x2="400" y2="416" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#8082f8"/>
+      <stop offset="0.52" stop-color="#3b3ef4"/>
+      <stop offset="1" stop-color="#20238a"/>
+    </linearGradient>
+    <linearGradient id="skill-workspace-continuation-small-text" x1="152" y1="164" x2="360" y2="348" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="0.3" stop-color="#3a6ef6"/>
+      <stop offset="0.68" stop-color="#937f8d"/>
+      <stop offset="1" stop-color="#8082f8"/>
+    </linearGradient>
+    <radialGradient id="skill-workspace-continuation-small-glow" cx="50%" cy="38%" r="62%">
+      <stop offset="0" stop-color="#8082f8" stop-opacity="0.42"/>
+      <stop offset="0.58" stop-color="#3b3ef4" stop-opacity="0.16"/>
+      <stop offset="1" stop-color="#20238a" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="skill-workspace-continuation-small-shadow" x="-24%" y="-24%" width="148%" height="148%" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="18" stdDeviation="18" flood-color="#000000" flood-opacity="0.42"/>
+    </filter>
+  </defs>
 
+  <rect x="20" y="20" width="472" height="472" rx="112" fill="url(#skill-workspace-continuation-small-bg)"/>
+  <rect x="24" y="24" width="464" height="464" rx="108" fill="none" stroke="#ffffff" stroke-opacity="0.08" stroke-width="2"/>
+  <circle cx="256" cy="220" r="210" fill="url(#skill-workspace-continuation-small-glow)"/>
+
+  <g opacity="0.18">
+    <path d="M152 176h136c56 0 96 40 96 88s-40 88-96 88H168M152 176l64-64M152 176l64 64" fill="none" stroke="#5056e6" stroke-width="28" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+
+  <g filter="url(#skill-workspace-continuation-small-shadow)">
+    <rect x="104" y="132" width="304" height="248" rx="72" fill="#020617" fill-opacity="0.72"/>
+    <rect x="105.5" y="133.5" width="301" height="245" rx="70.5" fill="none" stroke="url(#skill-workspace-continuation-small-accent)" stroke-opacity="0.76" stroke-width="3"/>
+    <text x="256" y="256" text-anchor="middle" dominant-baseline="central" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="124" font-weight="900" letter-spacing="0" fill="url(#skill-workspace-continuation-small-text)" stroke="#020617" stroke-width="5" paint-order="stroke">⏭️</text>
+  </g>
+
+  <path d="M128 410h256" stroke="url(#skill-workspace-continuation-small-accent)" stroke-width="10" stroke-linecap="round" opacity="0.78"/>
 </svg>

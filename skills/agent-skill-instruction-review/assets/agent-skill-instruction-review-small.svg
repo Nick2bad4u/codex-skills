@@ -1,8 +1,45 @@
 <svg xmlns="http://www.w3.org/2000/svg" role="img" viewBox="0 0 512 512" width="96" height="96">
   <title>Agent Skill Instruction Review</title>
-  <rect width="512" height="512" rx="96" fill="#0f172a"/>
-  <path d="M96 416L416 96" stroke="#9333EA" stroke-width="120" stroke-linecap="round" opacity="0.18"/>
-  <circle cx="256" cy="256" r="168" fill="#9333EA" opacity="0.18"/>
-  <path d="M152 160h160M152 224h208M152 288h128M328 312l40 40 80-104" fill="none" stroke="#9333EA" stroke-width="32" stroke-linecap="round" stroke-linejoin="round"/>
+  <defs>
+    <linearGradient id="skill-agent-skill-instruction-review-small-bg" x1="64" y1="32" x2="448" y2="480" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#111827"/>
+      <stop offset="0.52" stop-color="#020617"/>
+      <stop offset="1" stop-color="#0f172a"/>
+    </linearGradient>
+    <linearGradient id="skill-agent-skill-instruction-review-small-accent" x1="112" y1="96" x2="400" y2="416" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#b97af1"/>
+      <stop offset="0.52" stop-color="#9333EA"/>
+      <stop offset="1" stop-color="#4d1d85"/>
+    </linearGradient>
+    <linearGradient id="skill-agent-skill-instruction-review-small-text" x1="152" y1="164" x2="360" y2="348" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="0.3" stop-color="#7067ef"/>
+      <stop offset="0.68" stop-color="#c27988"/>
+      <stop offset="1" stop-color="#b97af1"/>
+    </linearGradient>
+    <radialGradient id="skill-agent-skill-instruction-review-small-glow" cx="50%" cy="38%" r="62%">
+      <stop offset="0" stop-color="#b97af1" stop-opacity="0.42"/>
+      <stop offset="0.58" stop-color="#9333EA" stop-opacity="0.16"/>
+      <stop offset="1" stop-color="#4d1d85" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="skill-agent-skill-instruction-review-small-shadow" x="-24%" y="-24%" width="148%" height="148%" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="18" stdDeviation="18" flood-color="#000000" flood-opacity="0.42"/>
+    </filter>
+  </defs>
 
+  <rect x="20" y="20" width="472" height="472" rx="112" fill="url(#skill-agent-skill-instruction-review-small-bg)"/>
+  <rect x="24" y="24" width="464" height="464" rx="108" fill="none" stroke="#ffffff" stroke-opacity="0.08" stroke-width="2"/>
+  <circle cx="256" cy="220" r="210" fill="url(#skill-agent-skill-instruction-review-small-glow)"/>
+
+  <g opacity="0.18">
+    <path d="M152 160h160M152 224h208M152 288h128M328 312l40 40 80-104" fill="none" stroke="#934ede" stroke-width="28" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+
+  <g filter="url(#skill-agent-skill-instruction-review-small-shadow)">
+    <rect x="104" y="132" width="304" height="248" rx="72" fill="#020617" fill-opacity="0.72"/>
+    <rect x="105.5" y="133.5" width="301" height="245" rx="70.5" fill="none" stroke="url(#skill-agent-skill-instruction-review-small-accent)" stroke-opacity="0.76" stroke-width="3"/>
+    <text x="256" y="256" text-anchor="middle" dominant-baseline="central" font-family="Segoe UI Emoji, Apple Color Emoji, Noto Color Emoji, Segoe UI Symbol, sans-serif" font-size="104" font-weight="900" letter-spacing="0" fill="#f8fafc">🔎</text>
+  </g>
+
+  <path d="M128 410h256" stroke="url(#skill-agent-skill-instruction-review-small-accent)" stroke-width="10" stroke-linecap="round" opacity="0.78"/>
 </svg>

@@ -14,7 +14,7 @@ Use this skill to create, review, repair, or harden GitHub Actions workflows wit
 3. Preserve local policy. Examples: full-SHA pinning, owned shared workflow calls at `@main`, required comments beside pinned actions, forced package installs, custom shared configs, or release gates.
 4. Check current docs or action metadata when exact syntax, inputs, permissions, or action versions matter. Do not guess action inputs from memory.
 5. If reviewing a large workflow set, read `references/review-checklist.md` and use it as the audit frame.
-6. A large list containing the best practices for the GitHub Actions ecosystem is located in `references/github-actions-best-practices.md`. Use it as a reference if you are unsure about a specific workflow design choice, but do not treat it as a strict checklist. The best practices list is intentionally broad and not all items apply to every workflow.
+6. If creating or heavily revising workflows, read `references/github-actions-best-practices.md` for the compact best-practices checklist.
 
 ## Create Or Edit Workflows
 

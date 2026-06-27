@@ -7,6 +7,13 @@ description: Creates new agent skill and instruction surfaces including SKILL.md
 
 Use this skill to create agent-facing instructions that are grounded in the target project, not generic prompt prose. Prefer the smallest durable surface that matches the requested scope.
 
+## Source Priority
+
+- For Codex behavior, verify current OpenAI Codex docs or the Codex manual when discovery, precedence, or supported surfaces matter.
+- For portable Agent Skills, verify the current Agent Skills specification when frontmatter, folder layout, bundled resources, or trigger behavior matter.
+- For this repository or another skill package, obey repo-local validators and schemas even when the broader Agent Skills specification allows additional fields.
+- Treat third-party gists, blog posts, and examples as advisory. Use them for ideas, not as authority over official docs or repo rules.
+
 ## Choose The Surface
 
 - Use `AGENTS.md` for durable repository conventions, setup commands, validation expectations, review priorities, and local workflow rules.
@@ -26,7 +33,9 @@ Use this skill to create agent-facing instructions that are grounded in the targ
 
 ## AGENTS.md Creation
 
-Create plain Markdown with headings that fit the project. Common sections:
+Create plain Markdown with headings that fit the project. Codex loads applicable `AGENTS.md` guidance automatically, and more specific files closer to the working path can specialize broader guidance. Keep global, repo, and subtree guidance separate instead of repeating the same rules everywhere.
+
+Common sections:
 
 - Repository purpose and boundaries.
 - Setup, build, test, lint, typecheck, format, and release commands.
@@ -37,18 +46,21 @@ Create plain Markdown with headings that fit the project. Common sections:
 
 Make commands copy-pasteable and real. Mention nested precedence only when the repo has or needs nested instruction files.
 
+Do not use `AGENTS.md` for one-off task notes, secrets, credentials, private tokens, large copied logs, generated API docs, or broad motivational guidance. If a rule is repeated because an agent made the same mistake, rewrite it as a short trigger, decision rule, or command.
+
 ## Skill Creation
 
 Create skills as small folders with a required `SKILL.md`, plus optional `scripts/`, `references/`, `assets/`, and `agents/openai.yaml` when the target client uses it.
 
 1. Name the skill with lowercase hyphen-case and match the folder name.
 2. Put only `name` and `description` in frontmatter unless the target repository explicitly allows broader Agent Skills metadata.
-3. Write the description for triggering: front-load user intent, include realistic trigger words, define boundaries, and stay under the current spec limit.
+3. Write the description for triggering: front-load user intent, include realistic trigger words, define boundaries, and avoid claiming adjacent tasks.
 4. Write the body as a reusable workflow using imperative steps, source-of-truth rules, validation loops, gotchas, and output expectations.
-5. Add references only for bulky or variant-specific material that should load on demand.
+5. Keep `SKILL.md` compact. Add references only for bulky or variant-specific material that should load on demand, and link each reference from `SKILL.md` with when to read it.
 6. Add scripts only for deterministic repeated logic, and make them self-contained with clear dependencies and error messages.
 7. Add assets only when the skill needs templates, icons, fonts, sample files, or other output resources.
 8. Add trigger eval prompts or forward tests for complex skills when practical, including near-miss prompts that should not trigger.
+9. Avoid embedding whole old prompts or copied documentation. Distill them into durable procedures, checklists, and source links.
 
 ## Validation
 

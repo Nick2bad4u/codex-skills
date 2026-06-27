@@ -1,8 +1,11 @@
 # yaml-language-server: $schema=https://json.schemastore.org/codex-skill-metadata.json
 interface:
-    brand_color: "#EA580C"
+    brand_color: "#3b3ef4"
     default_prompt: "Use $workspace-continuation to resume this task from the current workspace state."
     display_name: "Workspace Continuation"
     icon_large: "./assets/workspace-continuation.svg"
     icon_small: "./assets/workspace-continuation-small.svg"
     short_description: "Continue work, plans, or handoffs"
+
+policy:
+    allow_implicit_invocation: false
