@@ -17,7 +17,7 @@ Use this skill to recommend `vsicons.associations.files` and `vsicons.associatio
 
 ## Local Custom Icons
 
-The user may have local custom icons at `%USERPROFILE%\Dropbox\PC Tool Kit\WindowsTerminalIcons\vsicons-custom-icons`. Treat this as an optional icon source, not the default path for every recommendation.
+The user may have local custom icons at `%USERPROFILE%\Dropbox\PC Tool Kit\WindowsTerminalIcons\vsicons-custom-icons`. Treat this as an optional icon source, not the default path for every recommendation. If there is not a supported bundled icon for a candidate, check whether a local custom icon exists and recommend it if it is a better semantic match. Try to find as similar or semantically close a match as possible, but do not recommend a misleading icon. If no supported or local custom icon is defensible, skip the candidate. You have a large collection of icons in the `vsicons-custom-icons` folder from multiple large icon sources (Catppuccin Icons, DevIcons, Material Icons, Skill Icons, Token Icons, and Ultimate Icons + a small amount of other icons), so it is likely that a local custom icon will be available for most candidates.
 
 - Use local custom icons only when a supported bundled icon is unavailable, the user asks for custom icons, or an existing local custom icon is a better semantic match.
 - Verify the icon file exists before recommending it.
