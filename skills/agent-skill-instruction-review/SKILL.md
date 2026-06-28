@@ -29,7 +29,7 @@ Use this skill to treat agent-facing instructions as maintained project code. St
 ## Optional Tools
 
 - Run repo-local validation first, such as `npm run validate`, markdown lint, schema checks, or custom scripts.
-- Use `skillcheck <path>` for SKILL.md static analysis when available; it can flag frontmatter, description quality, sizing, references, and cross-agent compatibility.
+- Use `skillcheck <path>` for SKILL.md static analysis when available; it can flag frontmatter, description quality, sizing, references, and cross-agent compatibility. Read [skillcheck-config.md](references/skillcheck-config.md) before judging strict configs or semantic findings.
 - Use `npx agentlinter` for AGENTS.md/CLAUDE.md-style workspace checks when available; treat generated reports as advisory and inspect proposed fixes before applying them.
 - Use secret scanners already configured by the repo when guidance files include tokens, keys, private URLs, or copied logs.
 

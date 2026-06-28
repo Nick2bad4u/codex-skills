@@ -1,0 +1,8 @@
+# yaml-language-server: $schema=https://json.schemastore.org/codex-skill-metadata.json
+interface:
+    brand_color: "#3776AB"
+    default_prompt: "Use $python-strict-development to add or repair strict Python lint, typecheck, test, and editor tooling."
+    display_name: "Python Strict Development"
+    icon_large: "./assets/python-strict-development.svg"
+    icon_small: "./assets/python-strict-development-small.svg"
+    short_description: "Maintain strict Python quality gates"

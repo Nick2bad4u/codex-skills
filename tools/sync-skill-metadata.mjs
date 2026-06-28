@@ -133,6 +133,16 @@ const skills = [
         shortTitle: "💅",
     },
     {
+        accent: "#3776AB",
+        displayName: "Python Strict Development",
+        glyph: "M168 160h176c40 0 72 32 72 72v48H256c-44 0-80 36-80 80v16M344 352H168c-40 0-72-32-72-72v-48h160c44 0 80-36 80-80v-16M184 160v-32M328 352v32",
+        longTitle: "Python Strict Development",
+        name: "python-strict-development",
+        prompt: "Use $python-strict-development to add or repair strict Python lint, typecheck, test, and editor tooling.",
+        shortDescription: "Maintain strict Python quality gates",
+        shortTitle: "🐍",
+    },
+    {
         accent: "#059669",
         displayName: "Release Publish Loop",
         glyph: "M152 320h208M184 256l72-72 72 72M256 184v176M152 392h208M368 152l32 32 64-80",

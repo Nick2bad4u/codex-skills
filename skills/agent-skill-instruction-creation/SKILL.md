@@ -65,7 +65,7 @@ Create skills as small folders with a required `SKILL.md`, plus optional `script
 ## Validation
 
 - Run repo-local validation first, such as `npm run validate`, markdown lint, schema checks, or generator scripts.
-- Use `skillcheck` when available to check SKILL.md format, references, description quality, sizing, and cross-agent compatibility.
+- Use `skillcheck` when available to check SKILL.md format, references, description quality, sizing, and cross-agent compatibility. Read [skillcheck-config.md](references/skillcheck-config.md) before adding a strict `skillcheck.toml` or using `--semantic`.
 - Use `npx agentlinter` when available to score AGENTS.md/CLAUDE.md-like workspaces for clarity, completeness, security, and consistency.
 - For Codex skills, verify `agents/openai.yaml` against the current SchemaStore/OpenAI metadata shape when that file is present.
 - If the new instruction surface changes expected behavior materially, sanity-test it with realistic prompts or a fresh Codex run when practical.
