@@ -2,6 +2,17 @@
 
 Use this reference when a Python repository needs the user's strict local quality setup. Adapt names and paths before writing files.
 
+## Contents
+
+- [Baseline Files](#baseline-files)
+- [Ruff](#ruff)
+- [mypy](#mypy)
+- [Pyright](#pyright)
+- [pytest](#pytest)
+- [VS Code Settings](#vs-code-settings)
+- [npm Scripts For Python Repos](#npm-scripts-for-python-repos)
+- [Fix Strategy](#fix-strategy)
+
 ## Baseline Files
 
 - `pyproject.toml`: Ruff, mypy, Pyright, and pytest configuration.

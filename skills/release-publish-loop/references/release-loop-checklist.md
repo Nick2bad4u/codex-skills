@@ -2,6 +2,15 @@
 
 Use this checklist before a remote push or publish workflow dispatch.
 
+## Contents
+
+- [Repository State](#repository-state)
+- [Local Gates](#local-gates)
+- [GitHub CI](#github-ci)
+- [Semver Evidence](#semver-evidence)
+- [Publish Dispatch](#publish-dispatch)
+- [Published Artifact Verification](#published-artifact-verification)
+
 ## Repository State
 
 ```powershell

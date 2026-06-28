@@ -133,7 +133,7 @@ const skills = [
         shortTitle: "💅",
     },
     {
-        accent: "#3776AB",
+        accent: "#1fc893",
         displayName: "Python Strict Development",
         glyph: "M168 160h176c40 0 72 32 72 72v48H256c-44 0-80 36-80 80v16M344 352H168c-40 0-72-32-72-72v-48h160c44 0 80-36 80-80v-16M184 160v-32M328 352v32",
         longTitle: "Python Strict Development",

@@ -49,6 +49,7 @@
         "types.d.ts"
     ],
     "scripts": {
+        "audit:skill-surfaces": "node tools/audit-skill-surfaces.mjs",
         "audit:skills": "node tools/audit-skills.mjs",
         "changelog:generate": "git-cliff --config cliff.toml --output CHANGELOG.md",
         "changelog:preview": "git-cliff --config cliff.toml --unreleased",
@@ -76,7 +77,7 @@
         "typecheck": "tsc --noEmit -p tsconfig.json",
         "update-actions": "npx actions-up --yes --style sha",
         "update-deps": "npx ncu -i --install never && npm update --force && npm install --force",
-        "validate": "node tools/validate-skills.mjs"
+        "validate": "node tools/validate-skills.mjs && node tools/audit-skill-surfaces.mjs"
     },
     "overrides": {
         "esbuild": "0.28.1"

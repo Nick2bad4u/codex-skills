@@ -12,7 +12,10 @@ Use this skill when Python code should meet the user's strict local quality bar 
 1. Read `pyproject.toml`, `package.json`, `.vscode/settings.json`, requirements files, lockfiles, CI workflows, and existing tests before changing tools.
 2. Prefer existing repo conventions when they are already strict and working.
 3. Use [strict-tooling.md](references/strict-tooling.md) when adding or repairing Ruff, mypy, Pyright, pytest, VS Code, or npm-script configuration.
-4. Do not weaken strict diagnostics, broad Ruff rule selection, or typecheck gates just to get a quick pass. Fix code or add narrow, justified ignores.
+4. Use [project-shapes.md](references/project-shapes.md) when the repository is not a simple `scripts` + `tests` project.
+5. Use [strict-fix-patterns.md](references/strict-fix-patterns.md) when strict diagnostics are valid but the right code fix is not obvious.
+6. Use `scripts/audit_python_strict.py` for a read-only strict profile audit before or after manual config edits.
+7. Do not weaken strict diagnostics, broad Ruff rule selection, or typecheck gates just to get a quick pass. Fix code or add narrow, justified ignores.
 
 ## Workflow
 
@@ -27,7 +30,8 @@ Use this skill when Python code should meet the user's strict local quality bar 
 4. Add npm package scripts only when the repository already uses npm as the task runner or the user asks for cross-language scripts.
 5. Keep ignores local and documented. Prefer `per-file-ignores` for CLI entrypoints, direct-execution bootstrap code, dynamic API boundaries, and pytest asserts.
 6. Keep editor settings in `.vscode/settings.json` aligned with repo config: Ruff uses filesystem config first, Pyright/Pylance runs workspace diagnostics, and tests use pytest.
-7. Run the narrow failing command after each fix, then run the aggregate gate.
+7. Run `python <skill>/scripts/audit_python_strict.py <repo>` when auditing strict-tooling drift, then inspect every failure before editing.
+8. Run the narrow failing command after each fix, then run the aggregate gate.
 
 ## Python Code Standards
 

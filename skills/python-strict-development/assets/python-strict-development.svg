@@ -12,15 +12,15 @@
       <stop offset="1" stop-color="#111827" stop-opacity="0.92"/>
     </linearGradient>
     <linearGradient id="skill-python-strict-development-large-accent" x1="104" y1="92" x2="408" y2="420" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#7da6c8"/>
-      <stop offset="0.48" stop-color="#3776AB"/>
-      <stop offset="1" stop-color="#1e4064"/>
+      <stop offset="0" stop-color="#6ddbb9"/>
+      <stop offset="0.48" stop-color="#1fc893"/>
+      <stop offset="1" stop-color="#116b57"/>
     </linearGradient>
     <linearGradient id="skill-python-strict-development-large-text" x1="88" y1="76" x2="424" y2="460" gradientUnits="userSpaceOnUse">
       <stop offset="0" stop-color="#ffffff"/>
-      <stop offset="0.3" stop-color="#3791c8"/>
-      <stop offset="0.68" stop-color="#919e66"/>
-      <stop offset="1" stop-color="#7da6c8"/>
+      <stop offset="0.3" stop-color="#29c4b9"/>
+      <stop offset="0.68" stop-color="#84ca59"/>
+      <stop offset="1" stop-color="#6ddbb9"/>
     </linearGradient>
     <linearGradient id="skill-python-strict-development-large-shine" x1="112" y1="96" x2="400" y2="392" gradientUnits="userSpaceOnUse">
       <stop offset="0" stop-color="#ffffff" stop-opacity="0.22"/>
@@ -28,9 +28,9 @@
       <stop offset="1" stop-color="#ffffff" stop-opacity="0"/>
     </linearGradient>
     <radialGradient id="skill-python-strict-development-large-glow" cx="50%" cy="38%" r="62%">
-      <stop offset="0" stop-color="#7da6c8" stop-opacity="0.36"/>
-      <stop offset="0.55" stop-color="#3776AB" stop-opacity="0.15"/>
-      <stop offset="1" stop-color="#1e4064" stop-opacity="0"/>
+      <stop offset="0" stop-color="#6ddbb9" stop-opacity="0.36"/>
+      <stop offset="0.55" stop-color="#1fc893" stop-opacity="0.15"/>
+      <stop offset="1" stop-color="#116b57" stop-opacity="0"/>
     </radialGradient>
     <filter id="skill-python-strict-development-large-shadow" x="-24%" y="-24%" width="148%" height="148%" color-interpolation-filters="sRGB">
       <feDropShadow dx="0" dy="20" stdDeviation="22" flood-color="#000000" flood-opacity="0.42"/>
@@ -62,7 +62,7 @@
   </g>
 
   <g filter="url(#skill-python-strict-development-large-soft-glow)" opacity="0.52" transform="translate(0 -18)">
-    <path d="M168 160h176c40 0 72 32 72 72v48H256c-44 0-80 36-80 80v16M344 352H168c-40 0-72-32-72-72v-48h160c44 0 80-36 80-80v-16M184 160v-32M328 352v32" fill="none" stroke="#3776AB" stroke-width="42" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M168 160h176c40 0 72 32 72 72v48H256c-44 0-80 36-80 80v16M344 352H168c-40 0-72-32-72-72v-48h160c44 0 80-36 80-80v-16M184 160v-32M328 352v32" fill="none" stroke="#1fc893" stroke-width="42" stroke-linecap="round" stroke-linejoin="round"/>
   </g>
 
   <g transform="translate(0 -18)">

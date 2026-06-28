@@ -2,6 +2,15 @@
 
 Use this reference for dark theme snippets, chart-specific review, and Mermaid configuration. Verify renderer support before using newer syntax.
 
+## Contents
+
+- [Portable Dark Theme](#portable-dark-theme)
+- [Palette Guidance](#palette-guidance)
+- [Flowchart Patterns](#flowchart-patterns)
+- [Sequence Patterns](#sequence-patterns)
+- [State And Lifecycle Patterns](#state-and-lifecycle-patterns)
+- [Review Checklist](#review-checklist)
+
 ## Portable Dark Theme
 
 Use `theme: base` when the renderer accepts frontmatter config:

@@ -7,20 +7,20 @@
       <stop offset="1" stop-color="#0f172a"/>
     </linearGradient>
     <linearGradient id="skill-python-strict-development-small-accent" x1="112" y1="96" x2="400" y2="416" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#7da6c8"/>
-      <stop offset="0.52" stop-color="#3776AB"/>
-      <stop offset="1" stop-color="#1e4064"/>
+      <stop offset="0" stop-color="#6ddbb9"/>
+      <stop offset="0.52" stop-color="#1fc893"/>
+      <stop offset="1" stop-color="#116b57"/>
     </linearGradient>
     <linearGradient id="skill-python-strict-development-small-text" x1="152" y1="164" x2="360" y2="348" gradientUnits="userSpaceOnUse">
       <stop offset="0" stop-color="#ffffff"/>
-      <stop offset="0.3" stop-color="#3791c8"/>
-      <stop offset="0.68" stop-color="#919e66"/>
-      <stop offset="1" stop-color="#7da6c8"/>
+      <stop offset="0.3" stop-color="#29c4b9"/>
+      <stop offset="0.68" stop-color="#84ca59"/>
+      <stop offset="1" stop-color="#6ddbb9"/>
     </linearGradient>
     <radialGradient id="skill-python-strict-development-small-glow" cx="50%" cy="38%" r="62%">
-      <stop offset="0" stop-color="#7da6c8" stop-opacity="0.42"/>
-      <stop offset="0.58" stop-color="#3776AB" stop-opacity="0.16"/>
-      <stop offset="1" stop-color="#1e4064" stop-opacity="0"/>
+      <stop offset="0" stop-color="#6ddbb9" stop-opacity="0.42"/>
+      <stop offset="0.58" stop-color="#1fc893" stop-opacity="0.16"/>
+      <stop offset="1" stop-color="#116b57" stop-opacity="0"/>
     </radialGradient>
     <filter id="skill-python-strict-development-small-shadow" x="-24%" y="-24%" width="148%" height="148%" color-interpolation-filters="sRGB">
       <feDropShadow dx="0" dy="18" stdDeviation="18" flood-color="#000000" flood-opacity="0.42"/>
@@ -32,7 +32,7 @@
   <circle cx="256" cy="220" r="210" fill="url(#skill-python-strict-development-small-glow)"/>
 
   <g opacity="0.18">
-    <path d="M168 160h176c40 0 72 32 72 72v48H256c-44 0-80 36-80 80v16M344 352H168c-40 0-72-32-72-72v-48h160c44 0 80-36 80-80v-16M184 160v-32M328 352v32" fill="none" stroke="#4d81ae" stroke-width="28" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M168 160h176c40 0 72 32 72 72v48H256c-44 0-80 36-80 80v16M344 352H168c-40 0-72-32-72-72v-48h160c44 0 80-36 80-80v-16M184 160v-32M328 352v32" fill="none" stroke="#3bbf9c" stroke-width="28" stroke-linecap="round" stroke-linejoin="round"/>
   </g>
 
   <g filter="url(#skill-python-strict-development-small-shadow)">

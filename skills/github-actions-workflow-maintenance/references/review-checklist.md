@@ -2,6 +2,19 @@
 
 Load this checklist for detailed reviews of `.github/workflows/*.yml` or `.yaml`, reusable workflow migrations, release workflows, or broad workflow audits.
 
+## Contents
+
+- [Trigger And Scope](#trigger-and-scope)
+- [Permissions And Secrets](#permissions-and-secrets)
+- [Action Supply Chain](#action-supply-chain)
+- [Jobs And Dependencies](#jobs-and-dependencies)
+- [Shell And Expressions](#shell-and-expressions)
+- [Caching And Artifacts](#caching-and-artifacts)
+- [Reusable Workflows](#reusable-workflows)
+- [Node And npm Package Workflows](#node-and-npm-package-workflows)
+- [Deployment Workflows](#deployment-workflows)
+- [Validation Commands](#validation-commands)
+
 ## Trigger And Scope
 
 - Does each workflow have a narrow, named responsibility?
