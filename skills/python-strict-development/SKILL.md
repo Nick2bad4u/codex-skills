@@ -44,7 +44,7 @@ Use this skill when Python code should meet the user's strict local quality bar 
 
 ## Validation Commands
 
-Prefer repo-local scripts when present. Otherwise run the equivalent direct commands:
+Prefer repo-local scripts when present. Otherwise, run the equivalent direct commands:
 
 ```powershell
 ruff check scripts tests
