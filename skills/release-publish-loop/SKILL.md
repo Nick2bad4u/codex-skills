@@ -1,6 +1,6 @@
 ---
 name: release-publish-loop
-description: "Execute authorized release publishing: validate and commit changes, push to GitHub, watch CI, fix failed checks, choose semver, dispatch publish or release workflows, and verify artifacts. Use when the user explicitly asks Codex to push and release."
+description: "Execute authorized release publishing: validate and commit changes, push to GitHub, watch CI and SonarCloud/SonarQube quality gates, fix failed checks, choose semver, dispatch publish or release workflows, and verify artifacts. Use when the user explicitly asks Codex to push and release."
 ---
 
 # Release Publish Loop
@@ -21,7 +21,8 @@ Use this skill when the user authorizes an end-to-end release process that can m
 2. Read repo instructions, release docs, package metadata, changelog config, publish workflow, CI workflows, and commit-message rules.
 3. Identify release commands and gates from the repo, such as `release:verify`, `release:check`, `pack:dry-run`, docs build, or package validation.
 4. Identify publish mechanism: GitHub Actions `workflow_dispatch`, tag push, npm publish script, GitHub release workflow, Pages deployment, or another registry.
-5. Read `references/release-loop-checklist.md` when the repo release path is unfamiliar or multiple workflows could publish.
+5. Identify external quality gates when configured, including SonarCloud or SonarQube project keys, `sonar-project.properties`, scanner workflow steps, and GitHub checks.
+6. Read `references/release-loop-checklist.md` when the repo release path is unfamiliar or multiple workflows could publish.
 
 ## Local Validation And Commit
 
@@ -36,8 +37,9 @@ Use this skill when the user authorizes an end-to-end release process that can m
 1. Push the intended branch to its upstream.
 2. Confirm local `HEAD` matches the remote branch SHA.
 3. List GitHub Actions runs for that exact commit and branch. Watch all required CI/security/release-readiness runs tied to the pushed commit.
-4. If CI fails, inspect annotations and logs before changing files. Fix the root cause, validate locally, commit, push, and watch the new commit.
-5. Repeat until required CI passes or a precise external blocker remains.
+4. If SonarCloud or SonarQube is configured, treat its quality gate and GitHub check as required. Inspect check details, annotations, scanner logs, and actionable findings; fix root causes in code, tests, docs, or configuration before publishing.
+5. If CI or Sonar fails, inspect annotations and logs before changing files. Fix the root cause, validate locally, commit, push, and watch the new commit.
+6. Repeat until required CI and configured quality gates pass or a precise external blocker remains.
 
 ## Semver Decision
 
@@ -49,7 +51,7 @@ Use this skill when the user authorizes an end-to-end release process that can m
 
 ## Publish Workflow
 
-1. Confirm all required CI for the target commit passed.
+1. Confirm all required CI and configured SonarCloud/SonarQube quality gates for the target commit passed.
 2. Confirm the target version or bump does not already exist in the registry or release system.
 3. Dispatch the publish workflow using the repo's documented inputs, or push the release tag only when that is the documented trigger.
 4. Watch the publish workflow to completion.

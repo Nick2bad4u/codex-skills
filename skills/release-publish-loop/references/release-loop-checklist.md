@@ -7,6 +7,7 @@ Use this checklist before a remote push or publish workflow dispatch.
 - [Repository State](#repository-state)
 - [Local Gates](#local-gates)
 - [GitHub CI](#github-ci)
+- [External Quality Gates](#external-quality-gates)
 - [Semver Evidence](#semver-evidence)
 - [Publish Dispatch](#publish-dispatch)
 - [Published Artifact Verification](#published-artifact-verification)
@@ -60,6 +61,20 @@ gh run view <run-id> --json jobs,conclusion,status,url
 ```
 
 Fix source causes before rerunning. Do not rerun repeatedly without evidence of a transient failure.
+
+## External Quality Gates
+
+Check for configured scanners and quality gates before publishing:
+
+```powershell
+Test-Path sonar-project.properties
+rg -n "sonar|SonarCloud|SonarQube|quality gate" .github package.json sonar-project.properties
+gh run view <run-id> --json jobs,conclusion,status,url
+```
+
+- If SonarCloud or SonarQube is configured, inspect the GitHub check, scanner logs, quality gate result, and actionable findings.
+- Fix root causes before publishing. Do not waive or ignore maintainability, reliability, security hotspot, vulnerability, coverage, or duplication failures unless the user explicitly accepts a documented false positive or external blocker.
+- Revalidate locally where possible, then push and watch the replacement commit until the quality gate passes.
 
 ## Semver Evidence
 
