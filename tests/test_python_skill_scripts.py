@@ -60,6 +60,16 @@ def test_audit_python_strict_accepts_repo_defaults() -> None:
     assert "package-json.python-scripts" in checks
 
 
+def test_audit_python_strict_reports_missing_project_files(tmp_path: Path) -> None:
+    """Verify the strict Python audit reports missing repository configuration."""
+    result = run_python(str(AUDIT_SCRIPT), str(tmp_path))
+
+    assert result.returncode == 1
+    assert "FAIL pyproject.exists: pyproject.toml is missing." in result.stdout
+    assert "WARN package-json.exists: package.json is absent" in result.stdout
+    assert "WARN vscode.exists: .vscode/settings.json is absent" in result.stdout
+
+
 def test_inventory_vsicons_reports_custom_icons(tmp_path: Path) -> None:
     """Verify the vsicons inventory reports custom file and folder icons."""
     custom_icons = tmp_path / "custom-icons"
@@ -84,3 +94,34 @@ def test_inventory_vsicons_reports_custom_icons(tmp_path: Path) -> None:
     assert custom_source["file_icons"] == ["codex"]
     assert custom_source["folder_icons"] == ["skills"]
     assert custom_source["missing_opened_folder_icons"] == ["skills"]
+
+
+def test_inventory_vsicons_reports_text_summary_for_bundled_icons(tmp_path: Path) -> None:
+    """Verify the vsicons inventory reports filtered text summaries for bundled icons."""
+    custom_icons = tmp_path / "custom-icons"
+    custom_icons.mkdir()
+    _ = (custom_icons / "file_type_codex.svg").write_text("<svg />", encoding="utf-8")
+    _ = (custom_icons / "file_type_unmatched.svg").write_text("<svg />", encoding="utf-8")
+
+    extension_root = tmp_path / "extensions"
+    bundled_icons = extension_root / "vscode-icons-team.vscode-icons-99.0.0" / "icons"
+    bundled_icons.mkdir(parents=True)
+    _ = (bundled_icons / "folder_type_codex.svg").write_text("<svg />", encoding="utf-8")
+    _ = (bundled_icons / "folder_type_codex_opened.svg").write_text("<svg />", encoding="utf-8")
+
+    result = run_python(
+        str(INVENTORY_SCRIPT),
+        "--custom-icons",
+        str(custom_icons),
+        "--extension-root",
+        str(extension_root),
+        "--query",
+        "codex",
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "custom: 1 source(s)" in result.stdout
+    assert "bundled: 1 source(s)" in result.stdout
+    assert "sample file icons: codex" in result.stdout
+    assert "sample folder icons: codex" in result.stdout
+    assert "folders missing _opened pair: 0" in result.stdout

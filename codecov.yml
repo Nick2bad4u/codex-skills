@@ -1,0 +1,30 @@
+codecov:
+    require_ci_to_pass: true
+
+comment:
+    behavior: "default"
+    layout: "reach,diff,flags,tree"
+    require_changes: true
+coverage:
+    precision: 2
+    range: "75...100"
+    round: "down"
+    status:
+        patch:
+            default:
+                if_ci_failed: "error"
+
+                target: "75%"
+                threshold: "1%"
+        project:
+            python:
+                flags:
+                    - "python"
+                if_ci_failed: "error"
+                target: "75%"
+                threshold: "1%"
+flags:
+    python:
+        paths:
+            - "skills/python-strict-development/scripts/"
+            - "skills/vsicons-association-recommender/scripts/"

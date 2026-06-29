@@ -17,6 +17,7 @@ concurrency:
 
 permissions:
     contents: "read"
+    id-token: "write"
 
 defaults:
     run:
@@ -37,8 +38,46 @@ jobs:
                   node-version: "22"
                   cache: "npm"
 
-            - name: "Install"
+            - name: "Setup Python"
+              uses: "actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1" # v6.3.0
+              with:
+                  python-version: "3.14"
+                  cache: "pip"
+                  cache-dependency-path: "requirements-dev.txt"
+
+            - name: "Install Node"
               run: "npm ci"
+
+            - name: "Install Python"
+              run: "python -m pip install --upgrade pip && python -m pip install -r requirements-dev.txt"
 
             - name: "Validate"
               run: "npm run release:verify"
+
+            - name: "Upload Python test results to Codecov"
+              if: "${{ !cancelled() }}"
+              uses: "codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f" # v7.0.0
+              with:
+                  use_oidc: true
+                  slug: "${{ github.repository }}"
+                  files: "coverage/pytest/junit.xml"
+                  flags: "python"
+                  name: "pytest-junit-python"
+                  report_type: "test_results"
+                  fail_ci_if_error: true
+                  disable_search: true
+                  verbose: true
+
+            - name: "Upload Python coverage to Codecov"
+              if: "${{ !cancelled() }}"
+              uses: "codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f" # v7.0.0
+              with:
+                  use_oidc: true
+                  slug: "${{ github.repository }}"
+                  files: "coverage/python/coverage.xml"
+                  flags: "python"
+                  name: "pytest-coverage-python"
+                  report_type: "coverage"
+                  fail_ci_if_error: true
+                  disable_search: true
+                  verbose: true

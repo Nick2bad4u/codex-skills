@@ -311,3 +311,20 @@
     strict_markers = true
     strict_parametrization_ids = true
     strict_xfail = true
+
+[tool.coverage.run]
+    branch           = true
+    disable_warnings = [ "no-data-collected" ]
+    parallel         = true
+    patch            = [ "subprocess" ]
+    source           = [ "skills/python-strict-development/scripts", "skills/vsicons-association-recommender/scripts" ]
+
+[tool.coverage.report]
+    exclude_also = [ "if __name__ == .__main__.:", "if TYPE_CHECKING:" ]
+    fail_under   = 75
+    precision    = 2
+    show_missing = true
+    skip_covered = false
+
+[tool.coverage.xml]
+    output = "coverage/python/coverage.xml"
