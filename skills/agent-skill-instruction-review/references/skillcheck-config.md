@@ -26,9 +26,34 @@ extension_fields = ["license", "metadata"]
 - `[frontmatter].extension_fields`: allows package formats with extra metadata fields. This conflicts with repositories that require only `name` and `description`; follow the repo-local schema first.
 - `semantic = true`: enables deeper semantic and graph-style linting. Review findings can involve relationships across `SKILL.md`, references, scripts, assets, metadata, links, trigger claims, and cross-agent compatibility. Treat them as evidence leads, not automatic fixes.
 
+## Usage
+
+Prefer repo-local wrappers because they encode path scope and history policy:
+
+```powershell
+npm run validate
+npm run skillcheck
+```
+
+In this repository, `npm run skillcheck` expands to:
+
+```powershell
+skillcheck --history --fail-on-regression skills
+```
+
+Use direct commands only when no wrapper exists or when checking a single package:
+
+```powershell
+skillcheck <path> --config skillcheck.toml
+skillcheck <path> --config skillcheck.toml --semantic
+```
+
+If `skillcheck.toml` already sets `semantic = true`, a normal config-backed run should include semantic checks. Use `--semantic` explicitly when testing a package with no config file or when confirming graph linting behavior.
+
 ## Review Procedure
 
 1. Run the repository's validator before external lint tools.
-2. Run `skillcheck <path>` and, when semantic checks are not already configured, `skillcheck <path> --semantic`.
+2. Run the repo-local `skillcheck` wrapper when present so `--history` and `--fail-on-regression` are applied.
 3. Inspect graph or semantic findings against actual files: missing references, dead links, unreferenced bundled resources, unsupported metadata, trigger/body mismatches, and cross-agent drift are often real; wording preferences may be advisory.
-4. Do not widen frontmatter allowances just to silence `skillcheck` if the repository's own schema intentionally rejects extension fields.
+4. Treat history output as a regression ledger. Do not delete or rewrite it unless the repository documents that it is generated-only.
+5. Do not widen frontmatter allowances just to silence `skillcheck` if the repository's own schema intentionally rejects extension fields.

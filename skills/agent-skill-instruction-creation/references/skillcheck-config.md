@@ -30,14 +30,26 @@ extension_fields = ["license", "metadata"]
 
 ## Usage
 
-Run the repo validator first, then `skillcheck`:
+Run the repo validator first, then the repo-local `skillcheck` wrapper when one exists:
 
 ```powershell
 npm run validate
-skillcheck .
-skillcheck . --semantic
+npm run skillcheck
 ```
 
-If `skillcheck.toml` already sets `semantic = true`, the plain `skillcheck .` run should include the semantic checks. Use `--semantic` explicitly when testing a package that has no config file or when confirming graph linting behavior.
+In this repository, `npm run skillcheck` expands to:
+
+```powershell
+skillcheck --history --fail-on-regression skills
+```
+
+Use direct commands only when no wrapper exists or when checking a single package:
+
+```powershell
+skillcheck <path> --config skillcheck.toml
+skillcheck <path> --config skillcheck.toml --semantic
+```
+
+If `skillcheck.toml` already sets `semantic = true`, a normal config-backed run should include semantic checks. Use `--semantic` explicitly when testing a package that has no config file or when confirming graph linting behavior. Semantic graph linting can find cross-file issues such as unreferenced bundled resources, missing links, unsupported metadata, trigger/body drift, and cross-agent compatibility mismatches; inspect source files before applying wording-only fixes.
 
 Do not copy this config into a repository whose validator rejects frontmatter extension fields. In those repos, keep `SKILL.md` frontmatter to the local schema and use `skillcheck` as advisory only.

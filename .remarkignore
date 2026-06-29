@@ -10,12 +10,16 @@
 **/coverage/
 **/dist-*/
 **/dist/
+**/env/
 **/node_modules/
 **/playwright-report/
 **/temp/
 **/test-results/
 **/tmp/
 **/target/
+**/venv/
+**/.venv/
+**/__pycache__/
 **/vendor/
 **/snapshots/
 

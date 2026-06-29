@@ -5,6 +5,7 @@ Use this reference when a Python repository needs the user's strict local qualit
 ## Contents
 
 - [Baseline Files](#baseline-files)
+- [Environment And Dependencies](#environment-and-dependencies)
 - [Ruff](#ruff)
 - [mypy](#mypy)
 - [Pyright](#pyright)
@@ -17,8 +18,31 @@ Use this reference when a Python repository needs the user's strict local qualit
 
 - `pyproject.toml`: Ruff, mypy, Pyright, and pytest configuration.
 - `.vscode/settings.json`: editor integration for Ruff, Pylance/Pyright, pytest, and the preferred interpreter.
+- `requirements-dev.txt`: pinned development tools and support packages.
 - `package.json`: npm scripts only when the repo already uses npm as a command runner or publishes a skill/package through npm.
-- `requirements-dev.txt` or equivalent: include `ruff`, `mypy`, `pyright`, `pytest`, and any stubs required by strict type checking.
+
+## Environment And Dependencies
+
+Prefer a repo-local venv for Python development:
+
+```powershell
+python -m venv .venv
+.\.venv\Scripts\python.exe -m pip install --upgrade pip
+.\.venv\Scripts\python.exe -m pip install -r requirements-dev.txt
+$env:Path = (Resolve-Path '.\.venv\Scripts').Path + ';' + $env:Path
+```
+
+Current pinned tool defaults:
+
+```text
+lxml==6.1.1
+mypy==2.1.0
+pyright==1.1.411
+pytest==9.1.1
+ruff==0.15.20
+```
+
+Keep transitive pins in `requirements-dev.txt` when the repo intentionally wants reproducible local checker behavior.
 
 ## Ruff
 
@@ -31,7 +55,24 @@ line-length = 120
 required-version = ">=0.15.20"
 show-fixes = true
 target-version = "py314"
-src = ["scripts", "tests"]
+src = ["."]
+cache-dir = ".cache/.ruff_cache"
+respect-gitignore = true
+extend-exclude = [
+    ".cache",
+    ".mypy_cache",
+    ".pytest_cache",
+    ".ruff_cache",
+    ".venv",
+    "__pycache__",
+    "build",
+    "coverage",
+    "dist",
+    "node_modules",
+    "site-packages",
+    "vendor",
+    "venv",
+]
 
 [tool.ruff.format]
 docstring-code-format = true
@@ -46,10 +87,11 @@ type-checking-imports = true
 [tool.ruff.lint]
 select = ["ALL"]
 ignore = [
-    "ANN401", # Dynamic JSON or API payloads at a typed boundary.
+    "ANN401", # Boundary payloads may be intentionally dynamic JSON.
     "COM812", # Conflicts with the formatter.
     "D203",   # Incompatible with D211.
     "D213",   # Incompatible with D212.
+    "INP001", # Direct-execution helper folders are not always import packages.
     "EM101",  # CLI errors are clearer inline at the call site.
     "EM102",  # CLI errors are clearer inline at the call site.
     "ISC001", # Conflicts with the formatter.
@@ -60,9 +102,6 @@ unfixable = [
     "ERA", # Do not delete commented context automatically.
     "F401", # Keep import removal explicit in review.
 ]
-
-[tool.ruff.lint.isort]
-known-first-party = ["your_package"]
 
 [tool.ruff.lint.pydocstyle]
 convention = "google"
@@ -76,40 +115,37 @@ strict = true
 ]
 ```
 
-Use `INP001` only for direct-execution helper directories such as `scripts/` that are intentionally not packages. Use `T201` only in CLI or rendering files that own user-facing output. Use `PLR091*` and `C901` only where command handlers or API wrappers are intentionally direct dispatchers.
+Use `T201` only in CLI or rendering files that own user-facing output. Use `PLR091*`, `C901`, or security ignores only after checking whether a small typed helper, dataclass, adapter, or fixed argument array removes the issue.
 
 ## mypy
 
-Keep mypy strict and enable high-signal extra error codes.
+Keep mypy strict and enable high-signal extra error codes. The current broad repo profile checks `files = ["."]`, uses `mypy_path = "."`, and writes validation artifacts under `coverage/mypy`.
 
 ```toml
 [tool.mypy]
 python_version = "3.14"
-files = ["scripts", "tests"]
-mypy_path = "scripts"
+files = ["."]
+mypy_path = "."
+cache_dir = ".cache/.mypy_cache"
 strict = true
 disallow_any_decorated = true
 disallow_any_unimported = true
-color_output = true
-incremental = true
-allow_redefinition = false
-local_partial_types = true
-no_implicit_optional = true
-no_implicit_reexport = true
-strict_optional = true
 strict_bytes = true
 strict_equality = true
 strict_equality_for_none = true
 warn_incomplete_stub = true
-warn_no_return = true
 warn_redundant_casts = true
 warn_return_any = true
 warn_unused_configs = true
 warn_unused_ignores = true
 warn_unreachable = true
-show_error_context = true
-pretty = true
-show_column_numbers = true
+junit_xml = "coverage/mypy/junit.xml"
+cobertura_xml_report = "coverage/mypy/cobertura.xml"
+xml_report = "coverage/mypy/mypy.xml"
+linecoverage_report = "coverage/mypy/linecoverage.xml"
+any_exprs_report = "coverage/mypy/any_exprs.txt"
+linecount_report = "coverage/mypy/linecount.txt"
+lineprecision_report = "coverage/mypy/lineprecision.txt"
 enable_error_code = [
     "deprecated",
     "explicit-override",
@@ -123,15 +159,32 @@ enable_error_code = [
 ]
 ```
 
+Exclude caches, virtual environments, build output, `coverage`, `node_modules`, and vendored folders. Keep report output out of source packages unless the repo intentionally publishes it.
+
 ## Pyright
 
-Use Pyright as a second strict checker. It catches inference, override, reachability, missing stub, and unknown-type problems that mypy may not report.
+Use Pyright as a second strict checker. It catches inference, override, reachability, missing stub, unused-result, and unknown-type problems that mypy may not report.
 
 ```toml
 [tool.pyright]
-include = ["scripts", "tests"]
-extraPaths = ["scripts"]
-exclude = ["**/.*", "**/__pycache__", ".mypy_cache", ".pytest_cache", ".ruff_cache", "node_modules"]
+include = ["."]
+extraPaths = ["."]
+exclude = [
+    "**/.*",
+    "**/.cache",
+    "**/.mypy_cache",
+    "**/.pytest_cache",
+    "**/.ruff_cache",
+    "**/.venv",
+    "**/__pycache__",
+    "**/build",
+    "**/coverage",
+    "**/dist",
+    "**/node_modules",
+    "**/site-packages",
+    "**/vendor",
+    "**/venv",
+]
 pythonVersion = "3.14"
 pythonPlatform = "All"
 typeCheckingMode = "strict"
@@ -139,8 +192,6 @@ analyzeUnannotatedFunctions = true
 strictDictionaryInference = true
 strictListInference = true
 strictSetInference = true
-strictParameterNoneValue = true
-enableTypeIgnoreComments = true
 enableReachabilityAnalysis = true
 deprecateTypingAliases = true
 disableBytesTypePromotions = true
@@ -151,6 +202,9 @@ reportUnknownLambdaType = "error"
 reportUnknownMemberType = "error"
 reportUnknownParameterType = "error"
 reportUnknownVariableType = "error"
+reportUnusedCallResult = true
+reportImplicitOverride = true
+reportUnnecessaryTypeIgnoreComment = true
 ```
 
 Add explicit `report... = true` diagnostics when a repo wants a fully pinned editor/CLI policy instead of relying on Pyright defaults. Keep `.vscode/settings.json` aligned with `python.analysis.typeCheckingMode = "strict"`.
@@ -161,14 +215,22 @@ Add explicit `report... = true` diagnostics when a repo wants a fully pinned edi
 [tool.pytest.ini_options]
 addopts = ["--strict-config", "--strict-markers", "--import-mode=importlib"]
 filterwarnings = ["error"]
-pythonpath = ["scripts"]
-testpaths = ["tests"]
+pythonpath = ["."]
+testpaths = ["."]
+cache_dir = ".cache/.pytest_cache"
+junit_duration_report = "call"
+junit_family = "xunit2"
+junit_logging = "log"
+junit_log_passing_tests = true
+junit_suite_name = "codex-skills"
 strict = true
 strict_config = true
 strict_markers = true
 strict_parametrization_ids = true
 strict_xfail = true
 ```
+
+If the repo has no tests, add focused tests for Python helpers instead of making `pytest` ignore exit code 5. Treat warnings as errors.
 
 ## VS Code Settings
 
@@ -184,19 +246,9 @@ strict_xfail = true
  },
  "mypy-type-checker.reportingScope": "workspace",
  "python.analysis.diagnosticMode": "workspace",
- "python.analysis.extraPaths": ["${workspaceFolder}/scripts"],
+ "python.analysis.extraPaths": ["${workspaceFolder}"],
  "python.analysis.typeCheckingMode": "strict",
- "python.analysis.typeEvaluation.analyzeUnannotatedFunctions": true,
- "python.analysis.typeEvaluation.deprecateTypingAliases": true,
- "python.analysis.typeEvaluation.disableBytesTypePromotions": true,
- "python.analysis.typeEvaluation.enableReachabilityAnalysis": true,
- "python.analysis.typeEvaluation.enableTypeIgnoreComments": true,
- "python.analysis.typeEvaluation.strictDictionaryInference": true,
- "python.analysis.typeEvaluation.strictListInference": true,
- "python.analysis.typeEvaluation.strictParameterNoneValue": true,
- "python.analysis.typeEvaluation.strictSetInference": true,
- "python.analysis.useLibraryCodeForTypes": true,
- "python.defaultInterpreterPath": "C:\\Python314\\python.exe",
+ "python.defaultInterpreterPath": "${workspaceFolder}\\.venv\\Scripts\\python.exe",
  "python.testing.pytestEnabled": true,
  "python.testing.unittestEnabled": false,
  "ruff.configurationPreference": "filesystemFirst",
@@ -209,7 +261,7 @@ strict_xfail = true
 }
 ```
 
-Do not hard-code `C:\\Python314\\python.exe` unless the workspace is intentionally tied to that local interpreter. For shared repositories, prefer documentation or environment setup over committing machine-specific paths.
+Do not hard-code a machine-global interpreter unless the workspace is intentionally tied to that local interpreter.
 
 ## npm Scripts For Python Repos
 
@@ -218,26 +270,35 @@ Use these only when npm is already the project task runner.
 ```json
 {
  "scripts": {
-  "check:python": "npm run lint:python && npm run typecheck:python && npm run test:python && python -m compileall -q -x \"[\\\\/]\\.\" scripts tests",
-  "compile:python": "python -m compileall -q -x \"[\\\\/]\\.\" scripts tests",
-  "format:python": "ruff format scripts tests && ruff check --fix scripts tests",
-  "lint:python": "ruff check scripts tests && ruff format --check scripts tests",
-  "mypy": "mypy scripts tests",
-  "pyright": "pyright scripts tests",
-  "ruff:check": "ruff check scripts tests",
-  "ruff:fix": "ruff check --fix scripts tests",
-  "ruff:format": "ruff format scripts tests",
-  "ruff:format:check": "ruff format --check scripts tests",
+  "check:python": "npm run lint:python && npm run typecheck:python && npm run test:python && npm run compile:python",
+  "check:python:unsafe": "npm run lint:python:unsafe && npm run typecheck:python && npm run test:python && npm run compile:python",
+  "compile:python": "python -m compileall -q -x \"[\\\\/]\\.\" skills tests",
+  "format:python": "npm run ruff:format && npm run ruff:fix",
+  "lint:python": "npm run ruff:check && npm run ruff:format:check",
+  "lint:python:unsafe": "npm run ruff:check:unsafe && npm run ruff:fix:unsafe",
+  "pyright": "pyright",
+  "python:bootstrap": "python -m pip install -r requirements-dev.txt",
+  "python:venv": "python -m venv .venv && .venv\\Scripts\\activate && python -m pip install --upgrade pip && python -m pip install -r requirements-dev.txt",
+  "ruff:check": "ruff check skills tests",
+  "ruff:check:unsafe": "ruff check --unsafe-fixes skills tests",
+  "ruff:fix": "ruff check --fix skills tests",
+  "ruff:fix:unsafe": "ruff check --fix --unsafe-fixes skills tests",
+  "ruff:format": "ruff format skills tests",
+  "ruff:format:check": "ruff format --check skills tests",
   "test:python": "pytest",
-  "typecheck:python": "mypy scripts tests && pyright scripts tests"
+  "typecheck:python": "mypy && pyright"
  }
 }
 ```
 
+Keep `check:python` as the aggregate release gate. Run `format:python` before review when formatting drift is expected; otherwise inspect diagnostics first.
+
 ## Fix Strategy
 
-- Run format before lint only when formatting drift is expected; otherwise inspect Ruff diagnostics first.
+- Fix root causes before adding suppressions. Do not mass-disable a rule family, downgrade strictness, or add broad ignores because a repo has a long diagnostic list.
 - Fix type errors at the boundary by adding typed models, `TypedDict`, protocols, dataclasses, or small adapters.
 - Add stubs or dependency extras when strict type checkers report missing stubs for a real dependency.
 - Use `cast` only at narrow trust boundaries and remove it when the surrounding type can be expressed.
+- For direct CLI output, prefer a focused `write_line()` helper over scattered `print()` calls when `T201` is enabled.
+- For `subprocess`, use fixed argument arrays and `shell=False`; justify a narrow `S603` suppression only when a test intentionally executes trusted local scripts.
 - Keep `# noqa`, `# type: ignore[...]`, and per-file ignores specific, justified, and close to the rule they suppress.

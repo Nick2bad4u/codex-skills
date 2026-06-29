@@ -1,5 +1,6 @@
 import { readdir } from "node:fs/promises";
 import * as path from "node:path";
+import { types } from "node:util";
 
 const auditUrl = "https://add-skill.vercel.sh/audit";
 const defaultSource = "Nick2bad4u/codex-skills";
@@ -287,6 +288,6 @@ try {
         }
     }
 } catch (error) {
-    console.error(error instanceof Error ? error.message : error);
+    console.error(types.isNativeError(error) ? error.message : error);
     process.exitCode = 1;
 }

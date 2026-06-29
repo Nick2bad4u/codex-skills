@@ -23,20 +23,12 @@ class IconInventory:
 
 def default_custom_icon_dir() -> Path:
     """Return the user's default local custom icon directory."""
-
     home = Path.home()
-    return (
-        home
-        / "Dropbox"
-        / "PC Tool Kit"
-        / "WindowsTerminalIcons"
-        / "vsicons-custom-icons"
-    )
+    return home / "Dropbox" / "PC Tool Kit" / "WindowsTerminalIcons" / "vsicons-custom-icons"
 
 
 def default_extension_roots() -> list[Path]:
     """Return common extension roots that can contain vscode-icons."""
-
     home = Path.home()
     roots = [
         home / ".vscode" / "extensions",
@@ -59,26 +51,23 @@ def default_extension_roots() -> list[Path]:
 
 def discover_vscode_icon_dirs(extension_roots: list[Path]) -> list[Path]:
     """Find likely vscode-icons extension directories."""
-
     directories: list[Path] = []
     for root in extension_roots:
         if not root.exists():
             continue
 
-        for candidate in root.glob("vscode-icons-team.vscode-icons-*"):
-            if candidate.is_dir():
-                directories.append(candidate)
-
-        for candidate in root.glob("**/vscode-icons-team.vscode-icons-*"):
-            if candidate.is_dir():
-                directories.append(candidate)
+        directories.extend(
+            candidate for candidate in root.glob("vscode-icons-team.vscode-icons-*") if candidate.is_dir()
+        )
+        directories.extend(
+            candidate for candidate in root.glob("**/vscode-icons-team.vscode-icons-*") if candidate.is_dir()
+        )
 
     return sorted(set(directories))
 
 
 def filter_names(names: list[str], query: str | None) -> list[str]:
     """Filter names by a case-insensitive query."""
-
     if query is None:
         return names
 
@@ -88,7 +77,6 @@ def filter_names(names: list[str], query: str | None) -> list[str]:
 
 def icon_name(path: Path, prefix: str, suffix: str = ".svg") -> str | None:
     """Extract a vscode-icons icon name from a file path."""
-
     name = path.name
     if not name.startswith(prefix) or not name.endswith(suffix):
         return None
@@ -97,7 +85,6 @@ def icon_name(path: Path, prefix: str, suffix: str = ".svg") -> str | None:
 
 def inventory_icon_dir(source: Path, query: str | None = None) -> IconInventory:
     """Inventory file and folder icons below a directory."""
-
     file_icons: set[str] = set()
     folder_icons: set[str] = set()
     opened_folder_icons: set[str] = set()
@@ -130,27 +117,24 @@ def inventory_icon_dir(source: Path, query: str | None = None) -> IconInventory:
 
 def parse_args() -> argparse.Namespace:
     """Parse command-line arguments."""
-
-    parser = argparse.ArgumentParser(
-        description="Inventory vscode-icons bundled and local custom SVG icon names."
-    )
-    parser.add_argument(
+    parser = argparse.ArgumentParser(description="Inventory vscode-icons bundled and local custom SVG icon names.")
+    _ = parser.add_argument(
         "--custom-icons",
         action="append",
         default=[],
         help="Custom icon directory to scan. Can be repeated.",
     )
-    parser.add_argument(
+    _ = parser.add_argument(
         "--extension-root",
         action="append",
         default=[],
         help="Extension root to scan for vscode-icons-team.vscode-icons-* directories. Can be repeated.",
     )
-    parser.add_argument(
+    _ = parser.add_argument(
         "--query",
         help="Case-insensitive substring filter for icon names.",
     )
-    parser.add_argument(
+    _ = parser.add_argument(
         "--json",
         action="store_true",
         help="Print machine-readable JSON.",
@@ -160,28 +144,26 @@ def parse_args() -> argparse.Namespace:
 
 def print_text(custom: list[IconInventory], bundled: list[IconInventory]) -> None:
     """Print a concise text summary."""
-
     for label, inventories in (("custom", custom), ("bundled", bundled)):
-        print(f"{label}: {len(inventories)} source(s)")
+        write_line(f"{label}: {len(inventories)} source(s)")
         for inventory in inventories:
-            print(f"  {inventory.source}")
-            print(f"    file icons: {len(inventory.file_icons)}")
-            print(f"    folder icons: {len(inventory.folder_icons)}")
-            print(
-                "    folders missing _opened pair: "
-                f"{len(inventory.missing_opened_folder_icons)}"
-            )
+            write_line(f"  {inventory.source}")
+            write_line(f"    file icons: {len(inventory.file_icons)}")
+            write_line(f"    folder icons: {len(inventory.folder_icons)}")
+            write_line(f"    folders missing _opened pair: {len(inventory.missing_opened_folder_icons)}")
             if inventory.file_icons:
-                print(f"    sample file icons: {', '.join(inventory.file_icons[:12])}")
+                write_line(f"    sample file icons: {', '.join(inventory.file_icons[:12])}")
             if inventory.folder_icons:
-                print(
-                    f"    sample folder icons: {', '.join(inventory.folder_icons[:12])}"
-                )
+                write_line(f"    sample folder icons: {', '.join(inventory.folder_icons[:12])}")
+
+
+def write_line(text: str) -> None:
+    """Write one line to stdout."""
+    _ = sys.stdout.write(f"{text}\n")
 
 
 def main() -> int:
     """Run the inventory."""
-
     args = parse_args()
     custom_dirs = [Path(value).expanduser() for value in args.custom_icons]
     if not custom_dirs:
@@ -191,18 +173,11 @@ def main() -> int:
     if not extension_roots:
         extension_roots = default_extension_roots()
 
-    custom = [
-        inventory_icon_dir(icon_dir, args.query)
-        for icon_dir in custom_dirs
-        if icon_dir.exists()
-    ]
-    bundled = [
-        inventory_icon_dir(icon_dir, args.query)
-        for icon_dir in discover_vscode_icon_dirs(extension_roots)
-    ]
+    custom = [inventory_icon_dir(icon_dir, args.query) for icon_dir in custom_dirs if icon_dir.exists()]
+    bundled = [inventory_icon_dir(icon_dir, args.query) for icon_dir in discover_vscode_icon_dirs(extension_roots)]
 
     if args.json:
-        print(
+        write_line(
             json.dumps(
                 {
                     "bundled": [asdict(inventory) for inventory in bundled],

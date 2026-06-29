@@ -57,8 +57,10 @@ Use this reference when strict Ruff, mypy, Pyright, or pytest diagnostics are va
 
 ## Suppressions
 
+- Treat every suppression as a reviewed exception, not as a cleanup strategy.
 - Prefer code changes over `# noqa`, `# type: ignore[...]`, or config ignores.
 - Include the exact rule or error code and a reason.
 - Keep suppressions close to the line or file that needs them.
 - Use per-file ignores for intentional file roles such as CLI output, direct script bootstrap, or pytest asserts.
+- Do not add broad repo-level ignores, blanket `type: ignore`, or whole rule-family disables to clear a large diagnostic backlog. Fix the repeated pattern or split the work into reviewed, narrow exceptions.
 - Remove stale suppressions when strict tools report them as unused.

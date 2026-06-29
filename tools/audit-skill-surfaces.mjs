@@ -1,5 +1,6 @@
 import { readdir, readFile, stat } from "node:fs/promises";
 import * as path from "node:path";
+import { types } from "node:util";
 
 const root = process.cwd();
 const skillsRoot = path.join(root, "skills");
@@ -165,7 +166,7 @@ async function pathExists(targetPath) {
         return true;
     } catch (error) {
         if (
-            error instanceof Error &&
+            types.isNativeError(error) &&
             "code" in error &&
             error.code === "ENOENT"
         ) {

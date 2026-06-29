@@ -8,6 +8,7 @@ Use this reference when the target repository does not match the simple `scripts
 - [Direct Script Repository](#direct-script-repository)
 - [src Package Library](#src-package-library)
 - [CLI Package](#cli-package)
+- [Root-Wide Skill Repository](#root-wide-skill-repository)
 - [Hybrid npm And Python Skill Package](#hybrid-npm-and-python-skill-package)
 - [No npm Task Runner](#no-npm-task-runner)
 - [Package Manager Notes](#package-manager-notes)
@@ -58,12 +59,26 @@ Use this for packages exposing console scripts or module entrypoints.
 - Keep Ruff `T201` ignores limited to the CLI output layer.
 - Prefer package entry points over direct `python path/to/script.py` execution for installable CLIs.
 
+## Root-Wide Skill Repository
+
+Use this for repositories where Python helpers are scattered under skill folders and tests live at the repo root.
+
+- Ruff `src = ["."]`
+- Ruff npm scripts should name the executable roots, such as `ruff check skills tests`.
+- mypy `files = ["."]` and `mypy_path = "."`
+- Pyright `include = ["."]` and `extraPaths = ["."]`
+- pytest `pythonpath = ["."]` and `testpaths = ["."]`
+- Keep cache and report output under `.cache/` and `coverage/`.
+- Add focused tests for helper scripts instead of suppressing pytest's no-tests exit code.
+- Exclude caches, venvs, build output, `node_modules`, coverage output, and vendored folders consistently across Ruff, mypy, Pyright, and pytest.
+
 ## Hybrid npm And Python Skill Package
 
 Use this when npm publishes the package but Python implements runtime helpers.
 
 - Keep npm scripts as orchestration wrappers around Python tools.
 - Keep `check:python`, `lint:python`, `typecheck:python`, `test:python`, and `compile:python` separate enough to debug failures quickly.
+- Add `python:venv` and `python:bootstrap` when npm is the normal local entrypoint for Python development setup.
 - Ensure `npm pack --dry-run` or the package manifest includes Python scripts, requirements files, skill resources, and generated metadata that consumers need.
 - Do not let npm package validation replace Python typecheck/test gates.
 
