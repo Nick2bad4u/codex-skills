@@ -30,6 +30,13 @@ const config = [
             "security/detect-non-literal-fs-filename": "off",
         },
     },
+    {
+        files: ["*.toml"],
+        rules: {
+            "toml/array-bracket-newline": "off",
+            "toml/array-element-newline": "off",
+        },
+    },
 ];
 
 export default config;
