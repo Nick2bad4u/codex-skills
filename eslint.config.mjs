@@ -31,8 +31,15 @@ const config = [
         },
     },
     {
+        files: ["tools/run-pytest.mjs"],
+        rules: {
+            "n/no-process-env": "off",
+        },
+    },
+    {
         files: ["*.toml"],
         rules: {
+            "tombi/tombi": "off",
             "toml/array-bracket-newline": "off",
             "toml/array-element-newline": "off",
         },

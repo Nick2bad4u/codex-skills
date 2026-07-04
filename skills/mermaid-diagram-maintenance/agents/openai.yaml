@@ -6,3 +6,6 @@ interface:
     icon_large: "./assets/mermaid-diagram-maintenance.svg"
     icon_small: "./assets/mermaid-diagram-maintenance-small.svg"
     short_description: "Create and theme Mermaid diagrams"
+
+policy:
+    allow_implicit_invocation: false

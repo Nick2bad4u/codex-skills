@@ -6,3 +6,6 @@ interface:
     icon_large: "./assets/remark-plugin-maintenance.svg"
     icon_small: "./assets/remark-plugin-maintenance-small.svg"
     short_description: "Bootstrap and maintain remark plugins"
+
+policy:
+    allow_implicit_invocation: false

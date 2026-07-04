@@ -35,6 +35,9 @@ const skills = [
         glyph: "M152 168h208M152 232h152M152 296h208M184 376l64-64 40 40 72-96",
         longTitle: "Agent Skill Instruction Creation",
         name: "agent-skill-instruction-creation",
+        policy: {
+            allowImplicitInvocation: false,
+        },
         prompt: "Use $agent-skill-instruction-creation to create agent skills or instructions for this project.",
         shortDescription: "Create skills and agent instructions",
         shortTitle: "🧩",
@@ -118,6 +121,9 @@ const skills = [
         glyph: "M144 176h96v64h-96zM272 176h96v64h-96zM208 304h96v64h-96zM240 208h32M320 240v32l-40 32M192 240v32l40 32",
         longTitle: "Mermaid Diagram Maintenance",
         name: "mermaid-diagram-maintenance",
+        policy: {
+            allowImplicitInvocation: false,
+        },
         prompt: "Use $mermaid-diagram-maintenance to create or improve Mermaid diagrams for this project.",
         shortDescription: "Create and theme Mermaid diagrams",
         shortTitle: "🧜‍♀️",
@@ -128,6 +134,9 @@ const skills = [
         glyph: "M144 184h224M160 256h192M184 328h144M136 384c56-104 184-120 240-40M376 128l16 32 32 16-32 16-16 32-16-32-32-16 32-16z",
         longTitle: "Prettier Plugin Maintenance",
         name: "prettier-plugin-maintenance",
+        policy: {
+            allowImplicitInvocation: false,
+        },
         prompt: "Use $prettier-plugin-maintenance to build, audit, or update this Prettier plugin repository.",
         shortDescription: "Bootstrap and maintain Prettier plugins",
         shortTitle: "💅",
@@ -161,6 +170,9 @@ const skills = [
         glyph: "M152 152h208M152 216h152M152 280h208M184 360h144M344 344l40 40 72-104",
         longTitle: "Remark Plugin Maintenance",
         name: "remark-plugin-maintenance",
+        policy: {
+            allowImplicitInvocation: false,
+        },
         prompt: "Use $remark-plugin-maintenance to build, audit, or update this remark plugin repository.",
         shortDescription: "Bootstrap and maintain remark plugins",
         shortTitle: "🔌",
@@ -171,6 +183,9 @@ const skills = [
         glyph: "M144 336c64-128 128-160 224-160M176 360c64 32 144 24 192-48M144 184c48-48 144-64 224-24",
         longTitle: "Stylelint Plugin Maintenance",
         name: "stylelint-plugin-maintenance",
+        policy: {
+            allowImplicitInvocation: false,
+        },
         prompt: "Use $stylelint-plugin-maintenance to build, audit, or update this Stylelint plugin repository.",
         shortDescription: "Bootstrap and maintain Stylelint plugins",
         shortTitle: "🎨",

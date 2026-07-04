@@ -6,3 +6,6 @@ interface:
     icon_large: "./assets/prettier-plugin-maintenance.svg"
     icon_small: "./assets/prettier-plugin-maintenance-small.svg"
     short_description: "Bootstrap and maintain Prettier plugins"
+
+policy:
+    allow_implicit_invocation: false
