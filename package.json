@@ -51,9 +51,9 @@
     "scripts": {
         "audit:skill-surfaces": "node tools/audit-skill-surfaces.mjs",
         "audit:skills": "node tools/audit-skills.mjs",
-        "changelog:generate": "npx git-cliff --config cliff.toml --output CHANGELOG.md",
-        "changelog:preview": "npx git-cliff --config cliff.toml --unreleased",
-        "changelog:release-notes": "npx git-cliff --config cliff.toml --current --strip all",
+        "changelog:generate": "git cliff --config node_modules/gitcliff-config-nick2bad4u/cliff.toml --github-repo Nick2bad4u/codex-skills --output CHANGELOG.md",
+        "changelog:preview": "git cliff --config node_modules/gitcliff-config-nick2bad4u/cliff.toml --github-repo Nick2bad4u/codex-skills --unreleased",
+        "changelog:release-notes": "git cliff --config node_modules/gitcliff-config-nick2bad4u/cliff.toml --github-repo Nick2bad4u/codex-skills --current",
         "check:python": "npm run lint:python && npm run typecheck:python && npm run test:python && npm run compile:python",
         "check:python:unsafe": "npm run lint:python:unsafe && npm run typecheck:python && npm run test:python && npm run compile:python",
         "compile:python": "python -m compileall -q -x \"[\\\\/]\\.\" skills tests",
@@ -65,7 +65,7 @@
         "install:local": "npx skills add . -g --agent universal --copy -y",
         "lint": "npx eslint --cache --cache-strategy content --cache-location .cache/.eslintcache",
         "lint:actions": "actionlint",
-        "lint:all": "npm run lint && npm run lint:package-json && npm run lint:remark && npm run lint:secretlint && npm run lint:stylelint && npm run lint:tsdoc && npm run lint:yamllint",
+        "lint:all": "npm run lint && npm run lint:package-json && npm run lint:remark && npm run lint:lychee && npm run lint:secretlint && npm run lint:stylelint && npm run lint:tsdoc && npm run lint:yamllint && npm run lint:jscpd",
         "lint:external": "npm run lint:actions && npm run lint:gitleaks",
         "lint:gitleaks": "gitleaks dir --config .gitleaks.toml .",
         "lint:package-json": "npx npmPkgJsonLint . --config .npmpackagejsonlintrc.json",
@@ -100,7 +100,10 @@
         "update-actions": "npx actions-up --yes --style sha",
         "update-all": "npm run update-actions && npm run update-deps",
         "update-deps": "npx ncu -i --install never && npm update --force && npm install --force",
-        "validate": "node tools/validate-skills.mjs && node tools/audit-skill-surfaces.mjs"
+        "validate": "node tools/validate-skills.mjs && node tools/audit-skill-surfaces.mjs",
+        "lint:jscpd": "jscpd --config node_modules/jscpd-config-nick2bad4u/jscpd.json",
+        "lint:lychee": "lychee --config node_modules/lychee-config-nick2bad4u/lychee.toml .",
+        "lint:lychee:smoke": "lychee --config node_modules/lychee-config-nick2bad4u/lychee.toml --dump-inputs README.md"
     },
     "overrides": {
         "esbuild": "0.28.1"
@@ -110,7 +113,11 @@
         "eslint": "^10.6.0",
         "eslint-config-nick2bad4u": "^3.3.1",
         "git-cliff": "^2.13.1",
+        "gitcliff-config-nick2bad4u": "^1.1.0",
         "gitleaks-config-nick2bad4u": "^1.0.3",
+        "jscpd": "^5.0.12",
+        "jscpd-config-nick2bad4u": "^1.0.0",
+        "lychee-config-nick2bad4u": "^1.0.0",
         "npm-package-json-lint": "^10.4.1",
         "npm-package-json-lint-config-nick2bad4u": "^1.0.4",
         "prettier": "^3.9.4",
