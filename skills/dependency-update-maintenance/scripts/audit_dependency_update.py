@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import shutil
 import subprocess
 import sys
@@ -24,12 +25,16 @@ NODE_SCRIPT_PRIORITY = [
 ]
 
 DIRECT_UPDATE_SCRIPTS = ("update-all", "update-deps", "deps:update", "dependencies:update")
+GIT_REF_PATTERN = re.compile(r"[A-Za-z0-9][A-Za-z0-9._/-]*")
+PACKAGE_JSON = "package.json"
+PACKAGE_LOCK_JSON = "package-lock.json"
+PYPROJECT_TOML = "pyproject.toml"
 MANAGER_MARKERS = [
-    ("npm", ("package-lock.json", "npm-shrinkwrap.json", "package.json")),
+    ("npm", (PACKAGE_LOCK_JSON, "npm-shrinkwrap.json", PACKAGE_JSON)),
     ("pnpm", ("pnpm-lock.yaml", "pnpm-workspace.yaml")),
     ("yarn", ("yarn.lock", ".yarnrc.yml")),
     ("bun", ("bun.lock", "bun.lockb", "bunfig.toml")),
-    ("python", ("pyproject.toml", "requirements.txt", "requirements-dev.txt", "uv.lock")),
+    ("python", (PYPROJECT_TOML, "requirements.txt", "requirements-dev.txt", "uv.lock")),
     ("poetry", ("poetry.lock",)),
     ("go", ("go.mod", "go.sum")),
     ("rust", ("Cargo.toml", "Cargo.lock")),
@@ -75,13 +80,36 @@ def path_exists(root: Path, relative_path: str) -> bool:
     return (root / relative_path).exists()
 
 
+def resolve_repository(value: str) -> Path:
+    """Resolve an existing repository directory from a CLI value."""
+    try:
+        repository = Path(value).expanduser().resolve(strict=True)
+    except OSError as error:
+        raise argparse.ArgumentTypeError(f"Repository path does not exist: {value}") from error
+    if not repository.is_dir():
+        raise argparse.ArgumentTypeError(f"Repository path is not a directory: {value}")
+    return repository
+
+
+def validate_git_ref(value: str) -> str:
+    """Accept simple branch, tag, remote, or commit names without Git revision operators."""
+    if (
+        GIT_REF_PATTERN.fullmatch(value) is None
+        or ".." in value
+        or "//" in value
+        or value.endswith(("/", ".", ".lock"))
+    ):
+        raise argparse.ArgumentTypeError("Base must be a simple branch, tag, remote, or commit name.")
+    return value
+
+
 def run_git(repo: Path, args: list[str]) -> list[str]:
     """Run git and return stdout lines, or an empty list when git is unavailable."""
     git_executable = shutil.which("git")
     if git_executable is None:
         return []
 
-    result = subprocess.run(  # noqa: S603 - Fixed git command arguments, no shell.
+    result = subprocess.run(  # noqa: S603  # Fixed executable and argument list; no shell.
         [git_executable, *args],
         cwd=repo,
         check=False,
@@ -95,9 +123,16 @@ def run_git(repo: Path, args: list[str]) -> list[str]:
 
 def git_changed_files(repo: Path, base: str) -> list[str]:
     """Return changed files using git diff plus uncommitted status."""
-    diff_files = run_git(repo, ["diff", "--name-only", "--diff-filter=ACMRTUXB", f"{base}...HEAD"])
+    resolved_base = run_git(repo, ["rev-parse", "--verify", "--end-of-options", f"{base}^{{commit}}"])
+    if len(resolved_base) != 1 or re.fullmatch(r"[0-9a-f]{40}", resolved_base[0]) is None:
+        return []
+
+    diff_files = run_git(
+        repo,
+        ["diff", "--name-only", "--diff-filter=ACMRTUXB", f"{resolved_base[0]}...HEAD", "--"],
+    )
     if not diff_files:
-        diff_files = run_git(repo, ["diff", "--name-only", "--diff-filter=ACMRTUXB"])
+        diff_files = run_git(repo, ["diff", "--name-only", "--diff-filter=ACMRTUXB", "--"])
 
     status_files: list[str] = []
     for line in run_git(repo, ["status", "--porcelain=v1"]):
@@ -116,7 +151,7 @@ def changed_or_exists(root: Path, changed_files: list[str], *paths: str) -> bool
 
 def read_package_scripts(root: Path) -> dict[str, str]:
     """Read package.json scripts as strings."""
-    package_json = root / "package.json"
+    package_json = root / PACKAGE_JSON
     if not package_json.exists():
         return {}
 
@@ -155,7 +190,7 @@ def detect_package_managers(root: Path, changed_files: list[str]) -> list[str]:
 def build_install_commands(root: Path, managers: list[str]) -> list[str]:
     """Build likely install commands for detected ecosystems."""
     commands: list[str] = []
-    if "npm" in managers and path_exists(root, "package-lock.json"):
+    if "npm" in managers and path_exists(root, PACKAGE_LOCK_JSON):
         commands.append("npm ci")
     if "pnpm" in managers:
         commands.append("pnpm install --frozen-lockfile")
@@ -174,7 +209,7 @@ def build_validation_commands(root: Path, managers: list[str], package_scripts: 
     """Build likely validation commands for detected ecosystems."""
     commands = [f"npm run {script}" for script in NODE_SCRIPT_PRIORITY if script in package_scripts]
 
-    pyproject = read_text(root, "pyproject.toml")
+    pyproject = read_text(root, PYPROJECT_TOML)
     if "python" in managers or "poetry" in managers:
         if "[tool.ruff" in pyproject:
             commands.append("ruff check .")
@@ -218,12 +253,12 @@ def build_warnings(
     warnings: list[str] = []
     manifest_changed = any(
         path in changed_files
-        for path in ("package.json", "pyproject.toml", "Cargo.toml", "go.mod", "Directory.Packages.props")
+        for path in (PACKAGE_JSON, PYPROJECT_TOML, "Cargo.toml", "go.mod", "Directory.Packages.props")
     )
     lock_changed = any(
         path in changed_files
         for path in (
-            "package-lock.json",
+            PACKAGE_LOCK_JSON,
             "pnpm-lock.yaml",
             "yarn.lock",
             "bun.lock",
@@ -293,10 +328,17 @@ def dedupe(values: list[str]) -> list[str]:
 def parse_args() -> argparse.Namespace:
     """Parse command-line arguments."""
     parser = argparse.ArgumentParser(description="Audit dependency-update surfaces and likely validation commands.")
-    _ = parser.add_argument("repository", nargs="?", default=".", help="Path to a repository.")
+    _ = parser.add_argument(
+        "repository",
+        nargs="?",
+        default=resolve_repository("."),
+        type=resolve_repository,
+        help="Path to a repository.",
+    )
     _ = parser.add_argument(
         "--base",
         default="origin/main",
+        type=validate_git_ref,
         help="Base ref for git diff when --changed-file is absent.",
     )
     _ = parser.add_argument(
@@ -343,7 +385,7 @@ def write_line(text: str) -> None:
 def main() -> int:
     """Run the audit."""
     args = parse_args()
-    repo = Path(args.repository).expanduser().resolve()
+    repo = cast("Path", args.repository)
     changed_files = [normalize_path(value) for value in args.changed_file] or git_changed_files(repo, args.base)
     audit = build_audit(
         repo,

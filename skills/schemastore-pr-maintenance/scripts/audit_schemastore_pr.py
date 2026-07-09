@@ -5,11 +5,14 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import shutil
 import subprocess
 import sys
 from dataclasses import asdict, dataclass
 from pathlib import Path
+
+GIT_REF_PATTERN = re.compile(r"[A-Za-z0-9][A-Za-z0-9._/-]*")
 
 
 @dataclass(frozen=True)
@@ -54,13 +57,36 @@ def test_schema_from_path(path: str, root: str) -> str | None:
     return f"{schema_root}.json"
 
 
+def resolve_repository(value: str) -> Path:
+    """Resolve an existing repository directory from a CLI value."""
+    try:
+        repository = Path(value).expanduser().resolve(strict=True)
+    except OSError as error:
+        raise argparse.ArgumentTypeError(f"Repository path does not exist: {value}") from error
+    if not repository.is_dir():
+        raise argparse.ArgumentTypeError(f"Repository path is not a directory: {value}")
+    return repository
+
+
+def validate_git_ref(value: str) -> str:
+    """Accept simple branch, tag, remote, or commit names without Git revision operators."""
+    if (
+        GIT_REF_PATTERN.fullmatch(value) is None
+        or ".." in value
+        or "//" in value
+        or value.endswith(("/", ".", ".lock"))
+    ):
+        raise argparse.ArgumentTypeError("Base must be a simple branch, tag, remote, or commit name.")
+    return value
+
+
 def run_git(repo: Path, args: list[str]) -> list[str]:
     """Run git and return stdout lines, or an empty list when git is unavailable."""
     git_executable = shutil.which("git")
     if git_executable is None:
         return []
 
-    result = subprocess.run(  # noqa: S603 - Fixed git command arguments, no shell.
+    result = subprocess.run(  # noqa: S603  # Fixed executable and argument list; no shell.
         [git_executable, *args],
         cwd=repo,
         check=False,
@@ -74,9 +100,16 @@ def run_git(repo: Path, args: list[str]) -> list[str]:
 
 def git_changed_files(repo: Path, base: str) -> list[str]:
     """Return changed files using git diff plus uncommitted status."""
-    diff_files = run_git(repo, ["diff", "--name-only", "--diff-filter=ACMRTUXB", f"{base}...HEAD"])
+    resolved_base = run_git(repo, ["rev-parse", "--verify", "--end-of-options", f"{base}^{{commit}}"])
+    if len(resolved_base) != 1 or re.fullmatch(r"[0-9a-f]{40}", resolved_base[0]) is None:
+        return []
+
+    diff_files = run_git(
+        repo,
+        ["diff", "--name-only", "--diff-filter=ACMRTUXB", f"{resolved_base[0]}...HEAD", "--"],
+    )
     if not diff_files:
-        diff_files = run_git(repo, ["diff", "--name-only", "--diff-filter=ACMRTUXB"])
+        diff_files = run_git(repo, ["diff", "--name-only", "--diff-filter=ACMRTUXB", "--"])
 
     status_files: list[str] = []
     for line in run_git(repo, ["status", "--porcelain=v1"]):
@@ -193,10 +226,17 @@ def dedupe(values: list[str]) -> list[str]:
 def parse_args() -> argparse.Namespace:
     """Parse command-line arguments."""
     parser = argparse.ArgumentParser(description="Audit changed SchemaStore PR files and print validation commands.")
-    _ = parser.add_argument("repository", nargs="?", default=".", help="Path to a SchemaStore checkout.")
+    _ = parser.add_argument(
+        "repository",
+        nargs="?",
+        default=resolve_repository("."),
+        type=resolve_repository,
+        help="Path to a SchemaStore checkout.",
+    )
     _ = parser.add_argument(
         "--base",
         default="origin/master",
+        type=validate_git_ref,
         help="Base ref for git diff when --changed-file is absent.",
     )
     _ = parser.add_argument(
@@ -240,7 +280,7 @@ def write_line(text: str) -> None:
 def main() -> int:
     """Run the audit."""
     args = parse_args()
-    repo = Path(args.repository).expanduser().resolve()
+    repo = args.repository
     changed_files = [normalize_path(value) for value in args.changed_file] or git_changed_files(repo, args.base)
     audit = build_audit(repo, changed_files)
 

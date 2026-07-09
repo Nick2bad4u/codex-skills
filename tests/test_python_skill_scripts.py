@@ -8,6 +8,7 @@ import sys
 from pathlib import Path
 from typing import cast
 
+ARGPARSE_USAGE_ERROR = 2
 REPO_ROOT = Path(__file__).resolve().parents[1]
 AUDIT_SCRIPT = REPO_ROOT / "skills" / "python-strict-development" / "scripts" / "audit_python_strict.py"
 DEPENDENCY_AUDIT_SCRIPT = (
@@ -41,7 +42,7 @@ def as_list(value: object) -> list[object]:
 
 def run_python(*args: str) -> subprocess.CompletedProcess[str]:
     """Run a Python script from the repository root."""
-    return subprocess.run(  # noqa: S603 - Tests invoke local helper scripts with shell=False and fixed interpreter.
+    return subprocess.run(  # noqa: S603  # Fixed interpreter and local helper arguments; no shell.
         [sys.executable, *args],
         cwd=REPO_ROOT,
         check=False,
@@ -197,6 +198,15 @@ def test_audit_dependency_update_reports_repo_scripts(tmp_path: Path) -> None:
     assert audit["install_commands"] == ["npm ci"]
     assert as_list(audit["validation_commands"])[:2] == ["npm run release:verify", "npm run test"]
     assert "npm run update-deps" in as_list(audit["update_commands"])
+
+
+def test_audit_scripts_reject_unsafe_git_refs(tmp_path: Path) -> None:
+    """Verify Git discovery rejects option-shaped refs before invoking Git."""
+    for script in (DEPENDENCY_AUDIT_SCRIPT, SCHEMASTORE_AUDIT_SCRIPT):
+        result = run_python(str(script), str(tmp_path), "--base=--upload-pack=malicious")
+
+        assert result.returncode == ARGPARSE_USAGE_ERROR
+        assert "Base must be a simple branch, tag, remote, or commit name." in result.stderr
 
 
 def test_audit_schemastore_pr_reports_missing_readiness(tmp_path: Path) -> None:

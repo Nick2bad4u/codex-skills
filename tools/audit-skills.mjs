@@ -282,7 +282,7 @@ try {
         const audit = await fetchAudit(skillNames, options);
 
         if (options.jsonOutput) {
-            console.log(JSON.stringify(audit, null, 2));
+            process.stdout.write(`${JSON.stringify(audit, null, 2)}\n`);
         } else {
             printTable(audit, skillNames, options);
         }
