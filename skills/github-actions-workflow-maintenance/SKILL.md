@@ -1,6 +1,6 @@
 ---
 name: github-actions-workflow-maintenance
-description: Create, review, edit, and harden GitHub Actions workflows. Use when Codex works on .github/workflows YAML, reusable workflows, workflow_call callers, CI/CD automation, action pinning, GITHUB_TOKEN permissions, npm publishing workflows, caching, matrix jobs, actionlint findings, or GitHub Actions review comments.
+description: Maintains GitHub Actions workflows. Use when creating, reviewing, editing, or hardening .github/workflows YAML, workflow_call callers, CI/CD automation, action pinning, permissions, npm publishing, caching, matrices, actionlint, or review comments.
 ---
 
 # GitHub Actions Workflow Maintenance

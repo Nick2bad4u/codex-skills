@@ -1,6 +1,6 @@
 ---
 name: python-strict-development
-description: Maintain Python projects with strict Ruff, mypy, Pyright, pytest, editor, and package-script quality gates. Use when Codex needs to create, audit, repair, or apply strict Python lint, format, typecheck, test, compile, or VS Code tooling practices.
+description: Maintains strict Python projects with Ruff, mypy, Pyright, pytest, editor, and package-script gates. Use when creating, auditing, or repairing strict lint, format, typecheck, test, compile, or VS Code tooling practices.
 ---
 
 # Python Strict Development

@@ -1,6 +1,6 @@
 ---
 name: vsicons-association-recommender
-description: Recommends copy-pasteable vscode-icons custom association objects for workspace files and folders. Use when Codex needs to inspect a project and map filenames, file extensions, generated files, dotfolders, test folders, config folders, or framework folders to supported VS Code Icons icon names.
+description: Generates copy-pasteable vscode-icons association objects. Use when mapping workspace filenames, extensions, generated files, dotfolders, test/config/framework folders, or other paths to supported VS Code Icons names.
 ---
 
 # VSIcons Association Recommender

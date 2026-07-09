@@ -1,6 +1,6 @@
 ---
 name: workspace-continuation
-description: Continue active work, implement an existing plan, or write a compact handoff. Use when Codex needs to resume from current workspace state, carry an existing plan through implementation and validation, or summarize work so a fresh session can continue without rediscovery.
+description: Generates compact handoffs and continues active plans from workspace state. Use when resuming work, carrying a plan through implementation and validation, or summarizing work for a fresh session without rediscovery.
 ---
 
 # Workspace Continuation

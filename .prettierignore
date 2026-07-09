@@ -1,0 +1,5 @@
+.cache/
+coverage/
+node_modules/
+reports/
+skills/*/scripts/__pycache__/

@@ -1,6 +1,6 @@
 ---
 name: remark-plugin-maintenance
-description: Build, audit, and maintain remark and remark-lint plugin repositories. Use when Codex needs to bootstrap a remark plugin, create or repair a remark-lint rule, audit unified/Markdown AST best practices, synchronize docs/tests/configs, or validate package and CLI behavior.
+description: Builds, audits, and maintains remark and remark-lint plugin repos. Use when scaffolding plugins, creating or repairing remark-lint rules, auditing unified/Markdown AST usage, syncing docs/tests/configs, or validating package/CLI behavior.
 ---
 
 # Remark Plugin Maintenance

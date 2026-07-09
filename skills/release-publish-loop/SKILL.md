@@ -1,6 +1,6 @@
 ---
 name: release-publish-loop
-description: "Execute authorized release publishing: validate and commit changes, push to GitHub, watch CI and SonarCloud/SonarQube quality gates, fix failed checks, choose semver, dispatch publish or release workflows, and verify artifacts. Use when the user explicitly asks Codex to push and release."
+description: Executes authorized release publishing. Use when the user explicitly asks Codex to commit/push, watch CI and SonarCloud/SonarQube gates, fix failed checks, choose semver, dispatch publish or release workflows, and verify artifacts.
 ---
 
 # Release Publish Loop

@@ -1,6 +1,6 @@
 ---
 name: lint-cleanup
-description: Fix lint, ESLint, and static-analysis diagnostics properly. Use when Codex needs to run lint commands, resolve ESLint errors or warnings, remove unnecessary disable comments, or replace suppressions with root-cause code, type, config, or test fixes.
+description: Validates and repairs lint, ESLint, and static-analysis diagnostics at the root cause. Use when running lint, resolving errors/warnings, removing unnecessary disable comments, or replacing suppressions with code, type, config, or test fixes.
 ---
 
 # Lint Cleanup

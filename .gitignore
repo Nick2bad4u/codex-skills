@@ -320,6 +320,10 @@ pyrightconfig.json
 [Ll]ib64
 [Ll]ocal
 [Ss]cripts
+!skills/*/scripts/
+!skills/*/scripts/**
+skills/*/scripts/__pycache__/
+skills/*/scripts/__pycache__/**
 pyvenv.cfg
 pip-selfcheck.json
 

@@ -1,6 +1,6 @@
 ---
 name: test-quality-maintenance
-description: Add, repair, and improve tests and coverage. Use when Codex needs to generate unit tests, fix failing tests, improve meaningful coverage, test error handling, add Playwright end-to-end tests, or create focused performance benchmarks.
+description: Generates, repairs, and improves tests and coverage. Use when writing unit tests, fixing failures, improving meaningful coverage, testing error handling, adding Playwright E2E tests, or creating focused benchmarks.
 ---
 
 # Test Quality Maintenance

@@ -1,6 +1,6 @@
 ---
 name: ci-release-readiness
-description: Debug CI failures and validate release readiness. Use when Codex needs to inspect GitHub Actions runs, fix failed checks, validate dependency updates, run release gates, prepare a repository for release, or execute a full release-readiness loop without publishing unless explicitly requested.
+description: Validates release readiness and debugs CI failures. Use when inspecting GitHub Actions runs, failed checks, dependency-update validation, release gates, release-candidate prep, or readiness loops that must not publish without approval.
 ---
 
 # CI Release Readiness

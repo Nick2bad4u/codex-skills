@@ -76,6 +76,16 @@ const skills = [
         shortTitle: "🛡️",
     },
     {
+        accent: "#0EA5E9",
+        displayName: "Dependency Update Maintenance",
+        glyph: "M144 168h160M304 136l48 32-48 32M368 232H208M208 200l-48 32 48 32M160 328h192M352 296l48 32-48 32",
+        longTitle: "Dependency Update Maintenance",
+        name: "dependency-update-maintenance",
+        prompt: "Use $dependency-update-maintenance to validate or perform dependency updates safely.",
+        shortDescription: "Validate dependency updates thoroughly",
+        shortTitle: "DEP",
+    },
+    {
         accent: "#7C3AED",
         displayName: "Documentation Maintenance",
         glyph: "M160 136h144l48 48v192H160zM304 136v56h56M200 240h112M200 288h152M200 336h96",
@@ -176,6 +186,16 @@ const skills = [
         prompt: "Use $remark-plugin-maintenance to build, audit, or update this remark plugin repository.",
         shortDescription: "Bootstrap and maintain remark plugins",
         shortTitle: "🔌",
+    },
+    {
+        accent: "#F97316",
+        displayName: "SchemaStore PR Maintenance",
+        glyph: "M176 152l-64 104 64 104M336 152l64 104-64 104M224 360l64-208M184 408h144M344 392l32 32 64-80",
+        longTitle: "SchemaStore PR Maintenance",
+        name: "schemastore-pr-maintenance",
+        prompt: "Use $schemastore-pr-maintenance to prepare or review this SchemaStore PR.",
+        shortDescription: "Prepare mergeable SchemaStore PRs",
+        shortTitle: "{}",
     },
     {
         accent: "#8B5CF6",

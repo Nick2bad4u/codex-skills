@@ -1,6 +1,6 @@
 ---
 name: agent-skill-instruction-creation
-description: Creates new agent skill and instruction surfaces including SKILL.md folders, AGENTS.md, AGENTS.override.md, CLAUDE.md, copilot-instructions.md, and Cursor rules. Use when asked to bootstrap, design, scaffold, migrate, or author reusable skills, project guidance, or agent workspace instructions.
+description: Creates agent skill and instruction surfaces. Use when authoring SKILL.md folders, AGENTS.md/AGENTS.override.md, CLAUDE.md, Copilot or Cursor rules, or when asked to bootstrap, design, scaffold, or migrate reusable agent guidance.
 ---
 
 # Agent Skill Instruction Creation

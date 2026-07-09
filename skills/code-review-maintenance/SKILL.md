@@ -1,6 +1,6 @@
 ---
 name: code-review-maintenance
-description: Review and improve repositories, files, configurations, and low-confidence review claims. Use when Codex is asked to review a codebase or file, fix brittle or hacky implementation choices, normalize duplicated logic or consistency drift, or triage AI review comments without accepting speculative claims.
+description: Maintains code-review quality across repos, files, configs, and low-confidence claims. Use when reviewing codebases/files, brittle implementations, consistency drift, comment triage, correctness, maintainability, security, release, or test risks.
 ---
 
 # Code Review Maintenance

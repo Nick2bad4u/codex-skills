@@ -1,6 +1,6 @@
 ---
 name: mermaid-diagram-maintenance
-description: Create, edit, review, theme, and debug Mermaid diagrams and config. Use when users mention Mermaid, flowcharts, sequence diagrams, ER diagrams, Gantt charts, dark themes, themeVariables, frontmatter config, renderer issues, or Markdown Mermaid blocks.
+description: Maintains Mermaid diagrams and config. Use when creating, editing, reviewing, theming, or debugging Mermaid flowcharts, sequence/ER/Gantt diagrams, dark themes, themeVariables, frontmatter config, renderer issues, or Markdown blocks.
 ---
 
 # Mermaid Diagram Maintenance

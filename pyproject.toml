@@ -313,11 +313,16 @@
     strict_xfail = true
 
 [tool.coverage.run]
-    branch           = true
+    branch = true
     disable_warnings = [ "no-data-collected" ]
-    parallel         = true
-    patch            = [ "subprocess" ]
-    source           = [ "skills/python-strict-development/scripts", "skills/vsicons-association-recommender/scripts" ]
+    parallel = true
+    patch = [ "subprocess" ]
+    source = [
+        "skills/dependency-update-maintenance/scripts",
+        "skills/python-strict-development/scripts",
+        "skills/schemastore-pr-maintenance/scripts",
+        "skills/vsicons-association-recommender/scripts"
+    ]
 
 [tool.coverage.report]
     exclude_also = [ "if __name__ == .__main__.:", "if TYPE_CHECKING:" ]

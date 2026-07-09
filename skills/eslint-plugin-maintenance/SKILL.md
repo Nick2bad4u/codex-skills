@@ -1,6 +1,6 @@
 ---
 name: eslint-plugin-maintenance
-description: Build, audit, and maintain ESLint plugin repositories. Use when Codex needs to bootstrap a new ESLint plugin from a template, audit plugin best practices, synchronize rule docs/tests/presets/generated surfaces, or discover and implement high-value net-new ESLint rules.
+description: Builds, audits, and maintains ESLint plugin repos. Use when scaffolding plugins, auditing best practices, syncing rule docs/tests/presets/generated surfaces, or discovering and implementing high-value net-new ESLint rules.
 ---
 
 # ESLint Plugin Maintenance

@@ -1,6 +1,6 @@
 ---
 name: prettier-plugin-maintenance
-description: Build, audit, and maintain Prettier plugin and shared Prettier configuration repositories. Use when Codex needs to bootstrap a Prettier plugin, implement or repair parsers/printers/options, audit doc-builder behavior, test formatting output, or validate package/editor/CI integration.
+description: Builds, audits, and maintains Prettier plugin and shared config repos. Use when scaffolding plugins, fixing parsers/printers/options, auditing doc-builder behavior, testing formatting output, or validating package/editor/CI integration.
 ---
 
 # Prettier Plugin Maintenance

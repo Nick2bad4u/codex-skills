@@ -1,6 +1,6 @@
 ---
 name: documentation-maintenance
-description: Review and improve repository documentation, TSDoc, TypeDoc output, API comments, and Docusaurus sites. Use when Codex needs to fix docs drift, TypeDoc diagnostics, TSDoc quality, broken examples or links, or polish an existing Docusaurus documentation portal.
+description: Maintains repository docs, TSDoc, TypeDoc output, API comments, and Docusaurus sites. Use when fixing docs drift, TypeDoc diagnostics, TSDoc quality, broken examples/links, or polishing an existing Docusaurus portal.
 ---
 
 # Documentation Maintenance

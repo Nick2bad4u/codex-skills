@@ -1,6 +1,6 @@
 ---
 name: agent-skill-instruction-review
-description: Audits and improves agent skill and instruction surfaces including SKILL.md, AGENTS.md, AGENTS.override.md, CLAUDE.md, Copilot instructions, and Cursor rules. Use when asked to lint, score, modernize, de-duplicate, secure, or repair reusable skills or project agent guidance.
+description: Audits and improves agent skill and instruction surfaces. Use when reviewing SKILL.md, AGENTS.md/AGENTS.override.md, CLAUDE.md, Copilot or Cursor rules, or when asked to lint, score, modernize, deduplicate, secure, or repair agent guidance.
 ---
 
 # Agent Skill Instruction Review

@@ -10,7 +10,11 @@ from typing import cast
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 AUDIT_SCRIPT = REPO_ROOT / "skills" / "python-strict-development" / "scripts" / "audit_python_strict.py"
+DEPENDENCY_AUDIT_SCRIPT = (
+    REPO_ROOT / "skills" / "dependency-update-maintenance" / "scripts" / "audit_dependency_update.py"
+)
 INVENTORY_SCRIPT = REPO_ROOT / "skills" / "vsicons-association-recommender" / "scripts" / "inventory_vsicons.py"
+SCHEMASTORE_AUDIT_SCRIPT = REPO_ROOT / "skills" / "schemastore-pr-maintenance" / "scripts" / "audit_schemastore_pr.py"
 
 
 def as_dict(value: object) -> dict[str, object]:
@@ -125,3 +129,162 @@ def test_inventory_vsicons_reports_text_summary_for_bundled_icons(tmp_path: Path
     assert "sample file icons: codex" in result.stdout
     assert "sample folder icons: codex" in result.stdout
     assert "folders missing _opened pair: 0" in result.stdout
+
+
+def test_audit_schemastore_pr_reports_targeted_commands(tmp_path: Path) -> None:
+    """Verify the SchemaStore PR audit reports schema surfaces and targeted commands."""
+    schema_root = tmp_path / "src" / "schemas" / "json"
+    catalog_root = tmp_path / "src" / "api" / "json"
+    test_root = tmp_path / "src" / "test" / "example"
+    schema_root.mkdir(parents=True)
+    catalog_root.mkdir(parents=True)
+    test_root.mkdir(parents=True)
+    _ = (schema_root / "example.json").write_text("{}", encoding="utf-8")
+    _ = (test_root / "example.json").write_text("{}", encoding="utf-8")
+    _ = (catalog_root / "catalog.json").write_text(
+        '{"schemas":[{"url":"https://www.schemastore.org/example.json"}]}',
+        encoding="utf-8",
+    )
+
+    result = run_python(
+        str(SCHEMASTORE_AUDIT_SCRIPT),
+        str(tmp_path),
+        "--changed-file",
+        "src/schemas/json/example.json",
+        "--changed-file",
+        "src/test/example/example.json",
+        "--json",
+    )
+
+    assert result.returncode == 0, result.stderr
+    audit = as_dict(json.loads(result.stdout))
+    assert audit["local_schemas"] == ["example.json"]
+    assert audit["missing_positive_tests"] == []
+    assert audit["missing_catalog_entries"] == []
+    assert "node ./cli.js check --schema-name=example.json" in as_list(audit["suggested_commands"])
+
+
+def test_audit_dependency_update_reports_repo_scripts(tmp_path: Path) -> None:
+    """Verify the dependency update audit prefers repo scripts and gated update commands."""
+    _ = (tmp_path / "package.json").write_text(
+        json.dumps(
+            {
+                "scripts": {
+                    "release:verify": "npm test",
+                    "test": "node --test",
+                    "update-deps": "ncu -u",
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    _ = (tmp_path / "package-lock.json").write_text("{}", encoding="utf-8")
+
+    result = run_python(
+        str(DEPENDENCY_AUDIT_SCRIPT),
+        str(tmp_path),
+        "--changed-file",
+        "package.json",
+        "--changed-file",
+        "package-lock.json",
+        "--include-update-commands",
+        "--json",
+    )
+
+    assert result.returncode == 0, result.stderr
+    audit = as_dict(json.loads(result.stdout))
+    assert audit["package_managers"] == ["npm"]
+    assert audit["install_commands"] == ["npm ci"]
+    assert as_list(audit["validation_commands"])[:2] == ["npm run release:verify", "npm run test"]
+    assert "npm run update-deps" in as_list(audit["update_commands"])
+
+
+def test_audit_schemastore_pr_reports_missing_readiness(tmp_path: Path) -> None:
+    """Verify the SchemaStore PR audit fails when a local schema lacks PR essentials."""
+    schema_root = tmp_path / "src" / "schemas" / "json"
+    schema_root.mkdir(parents=True)
+    _ = (schema_root / "missing.json").write_text("{}", encoding="utf-8")
+
+    result = run_python(
+        str(SCHEMASTORE_AUDIT_SCRIPT),
+        str(tmp_path),
+        "--changed-file",
+        "src/schemas/json/missing.json",
+    )
+
+    assert result.returncode == 1
+    assert "missing positive tests:" in result.stdout
+    assert "missing catalog/config entries:" in result.stdout
+    assert "Local schema changes are missing positive tests." in result.stdout
+
+
+def test_audit_dependency_update_reports_python_and_workflows(tmp_path: Path) -> None:
+    """Verify the dependency update audit reports Python and workflow validation hints."""
+    workflow_root = tmp_path / ".github" / "workflows"
+    workflow_root.mkdir(parents=True)
+    _ = (workflow_root / "ci.yml").write_text("name: CI\n", encoding="utf-8")
+    _ = (tmp_path / "requirements-dev.txt").write_text("pytest\n", encoding="utf-8")
+    _ = (tmp_path / "uv.lock").write_text("", encoding="utf-8")
+    _ = (tmp_path / "pyproject.toml").write_text(
+        """[tool.ruff]
+[tool.mypy]
+[tool.pyright]
+[tool.pytest.ini_options]
+""",
+        encoding="utf-8",
+    )
+
+    result = run_python(
+        str(DEPENDENCY_AUDIT_SCRIPT),
+        str(tmp_path),
+        "--changed-file",
+        "pyproject.toml",
+        "--changed-file",
+        "uv.lock",
+        "--changed-file",
+        ".github/workflows/ci.yml",
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "  - python" in result.stdout
+    assert "  - github-actions" in result.stdout
+    assert "  - python -m pip install -r requirements-dev.txt" in result.stdout
+    assert "  - ruff check ." in result.stdout
+    assert "  - actionlint" in result.stdout
+    assert "Mutating update commands omitted" in result.stdout
+
+
+def test_audit_dependency_update_reports_multiple_ecosystems(tmp_path: Path) -> None:
+    """Verify the dependency update audit detects lockfile ecosystems beyond npm."""
+    _ = (tmp_path / "pnpm-lock.yaml").write_text("", encoding="utf-8")
+    _ = (tmp_path / "yarn.lock").write_text("", encoding="utf-8")
+    _ = (tmp_path / "bun.lock").write_text("", encoding="utf-8")
+    _ = (tmp_path / "go.mod").write_text("module example\n", encoding="utf-8")
+    _ = (tmp_path / "Cargo.toml").write_text("[package]\nname = 'example'\n", encoding="utf-8")
+    _ = (tmp_path / "example.csproj").write_text("<Project />\n", encoding="utf-8")
+
+    result = run_python(
+        str(DEPENDENCY_AUDIT_SCRIPT),
+        str(tmp_path),
+        "--changed-file",
+        "pnpm-lock.yaml",
+        "--changed-file",
+        "yarn.lock",
+        "--changed-file",
+        "bun.lock",
+        "--changed-file",
+        "go.mod",
+        "--changed-file",
+        "Cargo.toml",
+        "--changed-file",
+        "example.csproj",
+        "--include-update-commands",
+        "--json",
+    )
+
+    assert result.returncode == 0, result.stderr
+    audit = as_dict(json.loads(result.stdout))
+    assert audit["package_managers"] == ["pnpm", "yarn", "bun", "go", "rust", "dotnet"]
+    assert "pnpm install --frozen-lockfile" in as_list(audit["install_commands"])
+    assert "go test ./..." in as_list(audit["validation_commands"])
+    assert "cargo update" in as_list(audit["update_commands"])

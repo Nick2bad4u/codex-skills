@@ -1,6 +1,6 @@
 ---
 name: stylelint-plugin-maintenance
-description: Build, audit, and maintain Stylelint plugin repositories. Use when Codex needs to bootstrap a new Stylelint plugin from a template, audit Stylelint plugin best practices, or discover and implement domain-specific Stylelint rules with docs, tests, configs, and package validation.
+description: Builds, audits, and maintains Stylelint plugin repos. Use when scaffolding plugins, auditing best practices, discovering/implementing domain-specific rules, or syncing docs, tests, configs, and package validation.
 ---
 
 # Stylelint Plugin Maintenance
