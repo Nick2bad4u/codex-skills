@@ -25,7 +25,8 @@ NODE_SCRIPT_PRIORITY = [
 ]
 
 DIRECT_UPDATE_SCRIPTS = ("update-all", "update-deps", "deps:update", "dependencies:update")
-GIT_REF_PATTERN = re.compile(r"[A-Za-z0-9][A-Za-z0-9._/-]*")
+DEFAULT_BASE_REFS = ("origin/main", "origin/master")
+GIT_COMMIT_PATTERN = re.compile(r"[0-9a-f]{40}")
 PACKAGE_JSON = "package.json"
 PACKAGE_LOCK_JSON = "package-lock.json"
 PYPROJECT_TOML = "pyproject.toml"
@@ -91,18 +92,6 @@ def resolve_repository(value: str) -> Path:
     return repository
 
 
-def validate_git_ref(value: str) -> str:
-    """Accept simple branch, tag, remote, or commit names without Git revision operators."""
-    if (
-        GIT_REF_PATTERN.fullmatch(value) is None
-        or ".." in value
-        or "//" in value
-        or value.endswith(("/", ".", ".lock"))
-    ):
-        raise argparse.ArgumentTypeError("Base must be a simple branch, tag, remote, or commit name.")
-    return value
-
-
 def run_git(repo: Path, args: list[str]) -> list[str]:
     """Run git and return stdout lines, or an empty list when git is unavailable."""
     git_executable = shutil.which("git")
@@ -121,16 +110,25 @@ def run_git(repo: Path, args: list[str]) -> list[str]:
     return [line.strip() for line in result.stdout.splitlines() if line.strip()]
 
 
-def git_changed_files(repo: Path, base: str) -> list[str]:
-    """Return changed files using git diff plus uncommitted status."""
-    resolved_base = run_git(repo, ["rev-parse", "--verify", "--end-of-options", f"{base}^{{commit}}"])
-    if len(resolved_base) != 1 or re.fullmatch(r"[0-9a-f]{40}", resolved_base[0]) is None:
-        return []
+def resolve_base_commit(repo: Path) -> str | None:
+    """Resolve the first available trusted default-branch ref to a commit SHA."""
+    for base_ref in DEFAULT_BASE_REFS:
+        resolved = run_git(repo, ["rev-parse", "--verify", f"{base_ref}^{{commit}}"])
+        if len(resolved) == 1 and GIT_COMMIT_PATTERN.fullmatch(resolved[0]) is not None:
+            return resolved[0]
+    return None
 
-    diff_files = run_git(
-        repo,
-        ["diff", "--name-only", "--diff-filter=ACMRTUXB", f"{resolved_base[0]}...HEAD", "--"],
-    )
+
+def git_changed_files(repo: Path) -> list[str]:
+    """Return changed files using git diff plus uncommitted status."""
+    base_commit = resolve_base_commit(repo)
+
+    diff_files = []
+    if base_commit is not None:
+        diff_files = run_git(
+            repo,
+            ["diff", "--name-only", "--diff-filter=ACMRTUXB", f"{base_commit}...HEAD", "--"],
+        )
     if not diff_files:
         diff_files = run_git(repo, ["diff", "--name-only", "--diff-filter=ACMRTUXB", "--"])
 
@@ -336,12 +334,6 @@ def parse_args() -> argparse.Namespace:
         help="Path to a repository.",
     )
     _ = parser.add_argument(
-        "--base",
-        default="origin/main",
-        type=validate_git_ref,
-        help="Base ref for git diff when --changed-file is absent.",
-    )
-    _ = parser.add_argument(
         "--changed-file",
         action="append",
         default=[],
@@ -386,7 +378,7 @@ def main() -> int:
     """Run the audit."""
     args = parse_args()
     repo = cast("Path", args.repository)
-    changed_files = [normalize_path(value) for value in args.changed_file] or git_changed_files(repo, args.base)
+    changed_files = [normalize_path(value) for value in args.changed_file] or git_changed_files(repo)
     audit = build_audit(
         repo,
         changed_files,

@@ -200,13 +200,14 @@ def test_audit_dependency_update_reports_repo_scripts(tmp_path: Path) -> None:
     assert "npm run update-deps" in as_list(audit["update_commands"])
 
 
-def test_audit_scripts_reject_unsafe_git_refs(tmp_path: Path) -> None:
-    """Verify Git discovery rejects option-shaped refs before invoking Git."""
+def test_audit_scripts_reject_missing_repositories(tmp_path: Path) -> None:
+    """Verify repository arguments are resolved and validated before use."""
+    missing_repository = tmp_path / "missing"
     for script in (DEPENDENCY_AUDIT_SCRIPT, SCHEMASTORE_AUDIT_SCRIPT):
-        result = run_python(str(script), str(tmp_path), "--base=--upload-pack=malicious")
+        result = run_python(str(script), str(missing_repository))
 
         assert result.returncode == ARGPARSE_USAGE_ERROR
-        assert "Base must be a simple branch, tag, remote, or commit name." in result.stderr
+        assert "Repository path does not exist" in result.stderr
 
 
 def test_audit_schemastore_pr_reports_missing_readiness(tmp_path: Path) -> None:
