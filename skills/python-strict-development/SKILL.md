@@ -9,7 +9,7 @@ Use this skill when Python code should meet the user's strict local quality bar 
 
 ## Source Priority
 
-1. Read `pyproject.toml`, `package.json`, `.vscode/settings.json`, `requirements-dev.txt`, lockfiles, CI workflows, and existing tests before changing tools.
+1. Read `pyproject.toml`, `package.json`, `.vscode/settings.json`, `pylock.toml` or `pylock.*.toml`, requirements files, tool-specific lockfiles, CI workflows, and existing tests before changing tools.
 2. Prefer existing repo conventions when they are already strict and working.
 3. Use [strict-tooling.md](references/strict-tooling.md) when adding or repairing Ruff, mypy, Pyright, pytest, VS Code, or npm-script configuration.
 4. Use [project-shapes.md](references/project-shapes.md) when the repository is not a simple `scripts` + `tests` project.
@@ -19,13 +19,9 @@ Use this skill when Python code should meet the user's strict local quality bar 
 
 ## Workflow
 
-1. Inventory Python entrypoints, import roots, test roots, minimum supported Python version, direct script execution requirements, and first-party module names.
-2. Confirm the active environment can run the expected tools: `ruff==0.15.20`, `mypy==2.1.0`, `pyright==1.1.411`, `pytest==9.1.1`, and `python -m compileall` when those pinned tools are available in `requirements-dev.txt`.
-3. Set up or refresh the local venv when needed:
-   - `python -m venv .venv`
-   - `.\.venv\Scripts\python.exe -m pip install --upgrade pip`
-   - `.\.venv\Scripts\python.exe -m pip install -r requirements-dev.txt`
-   - Put `.\.venv\Scripts` first on `PATH` before running npm-backed Python scripts.
+1. Inventory Python entrypoints, import roots, test roots, minimum supported Python version, target platforms, dependency manager, direct script execution requirements, and first-party module names.
+2. Confirm the resolved environment can run the expected tools: `ruff==0.15.20`, `mypy==2.1.0`, `pyright==1.1.411`, `pytest==9.1.1`, and `python -m compileall` when those versions are declared by the repository.
+3. Set up or sync the repo-local environment with the existing dependency manager and authoritative resolution file. Use [strict-tooling.md](references/strict-tooling.md) for requirements, `pylock.toml`, and tool-specific lock workflows; do not add a parallel dependency source merely to bootstrap the strict tools. Put the environment's scripts directory first on `PATH` before running npm-backed Python scripts.
 4. Configure or repair the project around one strict gate:
    - `ruff check` plus `ruff format --check`
    - `mypy` with `strict = true` and extra error codes

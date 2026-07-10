@@ -79,7 +79,7 @@ Use this when npm publishes the package but Python implements runtime helpers.
 - Keep npm scripts as orchestration wrappers around Python tools.
 - Keep `check:python`, `lint:python`, `typecheck:python`, `test:python`, and `compile:python` separate enough to debug failures quickly.
 - Add `python:venv` and `python:bootstrap` when npm is the normal local entrypoint for Python development setup.
-- Ensure `npm pack --dry-run` or the package manifest includes Python scripts, requirements files, skill resources, and generated metadata that consumers need.
+- Ensure `npm pack --dry-run` or the package manifest includes Python scripts, required dependency or lock files, skill resources, and generated metadata that consumers need.
 - Do not let npm package validation replace Python typecheck/test gates.
 
 ## No npm Task Runner
@@ -106,7 +106,10 @@ uv run pytest
 
 ## Package Manager Notes
 
+- For pip requirements, distinguish loose declaration inputs from a fully pinned install file and keep one generated resolution authoritative.
+- For `pylock.toml`, confirm installer support, use a standardized filename, and verify the lock covers every Python/platform target before replacing a cross-platform requirements file.
 - For `uv`, check `pyproject.toml`, `uv.lock`, dependency groups, and `requires-python`.
+- Treat uv exports to `pylock.toml` or `requirements.txt` as integration artifacts, not parallel files to edit by hand.
 - For Hatch, check build targets, environments, and scripts before adding direct commands.
 - For PDM or Poetry, use their existing task/dependency groups instead of adding parallel dependency declarations.
 - Keep editor interpreter paths local unless the repository intentionally commits a fixed interpreter path.
