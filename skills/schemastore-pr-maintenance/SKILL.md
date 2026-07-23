@@ -26,6 +26,13 @@ Use this skill for SchemaStore contribution work where the goal is a mergeable P
 8. Check `.github/CODEOWNERS` for touched schemas and expect owner review or self-merge behavior on owned paths.
 9. Format with the repo formatter and rerun targeted validation after every meaningful schema/test change.
 
+## Adoption Evidence
+
+- When project adoption helps maintainers assess a new schema or external catalog entry, include concise, current metrics in the PR description.
+- Prefer GitHub stars from the canonical repository and package downloads from the primary registry. Link the source and state the measurement date and download window.
+- Treat adoption metrics only as evidence that the schema would benefit users. They do not prove schema correctness and never replace upstream documentation, released source, runtime behavior, fixtures, or validation.
+- Omit metrics when they are unavailable, ambiguous, stale, or irrelevant. Do not add popularity fields to `catalog.json`.
+
 ## Validation
 
 Prefer current repo scripts and CLI behavior:
