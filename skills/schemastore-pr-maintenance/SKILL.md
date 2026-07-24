@@ -31,7 +31,7 @@ Use this skill for SchemaStore contribution work where the goal is a mergeable P
 - When project adoption helps maintainers assess a new schema or external catalog entry, include concise, current metrics in the PR description.
 - Prefer GitHub stars from the canonical repository and package downloads from the primary registry. Link the source and state the measurement date and download window.
 - Treat adoption metrics only as evidence that the schema would benefit users. They do not prove schema correctness and never replace upstream documentation, released source, runtime behavior, fixtures, or validation.
-- Omit metrics when they are unavailable, ambiguous, stale, or irrelevant. Do not add popularity fields to `catalog.json`.
+- Omit metrics when they are unavailable, ambiguous, stale, or irrelevant. Do not add popularity fields to `src/api/json/catalog.json`.
 
 ## Validation
 
