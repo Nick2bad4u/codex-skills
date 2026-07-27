@@ -1,3 +1,4 @@
+# Copyright (c) 2026 Nick2bad4u
 """Tests for Python helper scripts bundled with skills."""
 
 from __future__ import annotations

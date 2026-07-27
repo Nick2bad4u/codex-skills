@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+# Copyright (c) 2026 Nick2bad4u
 """Summarize SchemaStore PR surfaces and targeted validation commands."""
 
 from __future__ import annotations

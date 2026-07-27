@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+# Copyright (c) 2026 Nick2bad4u
 """Inventory vscode-icons bundled and local custom icon names."""
 
 from __future__ import annotations

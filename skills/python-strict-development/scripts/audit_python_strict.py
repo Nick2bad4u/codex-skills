@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+# Copyright (c) 2026 Nick2bad4u
 """Audit a Python repository for the strict tooling profile."""
 
 from __future__ import annotations
