@@ -5,7 +5,7 @@ description: Validates and optionally performs dependency updates without weaken
 
 # Dependency Update Maintenance
 
-Use this skill for dependency-update work where the goal is to prove the repository still works after changed package versions, not just make the install command finish.
+Use this skill for dependency-update work where the goal is to prove the repository still works after changed package versions, not just make the installation command finish.
 
 ## Scope Modes
 
