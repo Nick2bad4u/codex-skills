@@ -139,6 +139,19 @@ const skills = [
         shortTitle: "🧜‍♀️",
     },
     {
+        accent: "#CB3837",
+        displayName: "npm 12 Migration",
+        glyph: "M144 184l112-64 112 64v144l-112 64-112-64zM144 184l112 64 112-64M256 248v144M184 304l48 48 96-112",
+        longTitle: "npm 12 Migration",
+        name: "npm-12-migration",
+        policy: {
+            allowImplicitInvocation: false,
+        },
+        prompt: "Use $npm-12-migration to migrate this repository from npm 11 to npm 12 and validate the result.",
+        shortDescription: "Migrate npm projects to npm 12 safely",
+        shortTitle: "npm12",
+    },
+    {
         accent: "#C596C7",
         displayName: "Prettier Plugin Maintenance",
         glyph: "M144 184h224M160 256h192M184 328h144M136 384c56-104 184-120 240-40M376 128l16 32 32 16-32 16-16 32-16-32-32-16 32-16z",
@@ -193,6 +206,9 @@ const skills = [
         glyph: "M176 152l-64 104 64 104M336 152l64 104-64 104M224 360l64-208M184 408h144M344 392l32 32 64-80",
         longTitle: "SchemaStore PR Maintenance",
         name: "schemastore-pr-maintenance",
+        policy: {
+            allowImplicitInvocation: false,
+        },
         prompt: "Use $schemastore-pr-maintenance to prepare or review this SchemaStore PR.",
         shortDescription: "Prepare mergeable SchemaStore PRs",
         shortTitle: "{}",

@@ -1,0 +1,11 @@
+# yaml-language-server: $schema=https://json.schemastore.org/codex-skill-metadata.json
+interface:
+    brand_color: "#CB3837"
+    default_prompt: "Use $npm-12-migration to migrate this repository from npm 11 to npm 12 and validate the result."
+    display_name: "npm 12 Migration"
+    icon_large: "./assets/npm-12-migration.svg"
+    icon_small: "./assets/npm-12-migration-small.svg"
+    short_description: "Migrate npm projects to npm 12 safely"
+
+policy:
+    allow_implicit_invocation: false
