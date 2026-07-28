@@ -7,6 +7,16 @@ description: Generates compact handoffs and continues active plans from workspac
 
 Use this skill for continuity tasks that depend on current workspace state and prior progress.
 
+## Inputs
+
+- `current workspace state` - The branch, worktree, changed files, command results, TODOs, tests, and relevant conversation notes.
+- `active plan or objective` - The requested outcome, current plan, completed work, remaining steps, and known constraints.
+
+## Outputs
+
+- `validated continuation` - Focused implementation progress with verification evidence or a precise blocker.
+- `handoff` - A compact continuation record that lets a fresh session resume without rediscovery.
+
 ## Continue Work
 
 1. Resume from the actual workspace state rather than restarting from scratch.
@@ -17,6 +27,8 @@ Use this skill for continuity tasks that depend on current workspace state and p
 
 ## Implement A Plan
 
+Use `current workspace state` and `active plan or objective` to produce a `validated continuation`.
+
 1. Read the plan and inspect the files, data paths, and tests it affects.
 2. Confirm the plan still matches the current code. If stale, adapt it conservatively and explain the adjustment.
 3. Check the worktree before editing and preserve unrelated user changes.
@@ -25,8 +37,8 @@ Use this skill for continuity tasks that depend on current workspace state and p
 
 ## Write A Handoff
 
-Include objective, current status, working directory, branch, dirty files, files changed or inspected, decisions made, commands run and results, remaining work in priority order, blockers, risks, and assumptions. Keep it compact but specific enough for a fresh session to resume.
+Use `current workspace state` and `active plan or objective` to produce a `handoff`. Include the objective, current status, working directory, dirty files, files changed or inspected, decisions made, remaining work in priority order, blockers, risks, and assumptions. Keep it specific enough for a fresh session to resume.
 
-## Output
+## Reporting
 
 Finish with what changed or what remains, why it matches the plan or current objective, and the verification evidence.

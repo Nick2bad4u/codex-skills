@@ -16,7 +16,19 @@ Use this skill to create, review, repair, or harden GitHub Actions workflows wit
 5. If reviewing a large workflow set, read `references/review-checklist.md` and use it as the audit frame.
 6. If creating or heavily revising workflows, read `references/github-actions-best-practices.md` for the compact best-practices checklist.
 
+## Inputs
+
+- `workflow files` - The target GitHub Actions YAML and any reusable callers or providers it depends on.
+- `repository evidence` - Local policy, package scripts, lockfiles, action metadata, validation output, and remote failure logs.
+
+## Outputs
+
+- `workflow changes` - Valid, focused YAML edits that preserve repository policy.
+- `review findings` - Prioritized risks with evidence, recommended fixes, and validation.
+
 ## Create Or Edit Workflows
+
+Use `workflow files` and `repository evidence` to produce `workflow changes`.
 
 1. Use one workflow per durable responsibility. Split only when triggers, permissions, ownership, or failure recovery differ.
 2. Choose triggers intentionally:
@@ -52,6 +64,8 @@ Use this skill to create, review, repair, or harden GitHub Actions workflows wit
 
 ## Review Workflow
 
+Review `workflow files` against `repository evidence` and return `review findings`.
+
 1. Parse the YAML mentally as GitHub will: triggers, permissions, defaults, concurrency, jobs, strategy, needs, environment, outputs, services, steps, and expressions.
 2. List high-impact findings first: workflows that do not trigger, publish/deploy when they should not, expose secrets, use unsafe privileged triggers, grant broad write permissions, skip release gates, or cannot pass validation.
 3. Check action inputs against the action's current metadata when an input is new, renamed, or suspicious.
@@ -66,6 +80,6 @@ Use this skill to create, review, repair, or harden GitHub Actions workflows wit
 3. For remote failures, inspect logs and annotations before rerunning. Rerun only after a fix or when evidence supports a transient service failure.
 4. If a local tool cannot run, explain the missing binary, credentials, network condition, or platform mismatch, then run the next closest non-mutating validation.
 
-## Output
+## Reporting
 
 For review-only requests, return findings first with file/line, impact, evidence, recommended fix, and validation. For edit requests, finish with files changed, policy choices preserved, commands run, and any remote follow-up needed.

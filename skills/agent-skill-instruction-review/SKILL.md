@@ -15,7 +15,19 @@ Use this skill to treat agent-facing instructions as maintained project code. St
 - For repo-specific skill packages, obey the repository's own schema, validators, metadata rules, and install paths even when the broader spec allows more fields.
 - Do not let linter scores override clear project evidence. Use findings as leads, not authority.
 
+## Inputs
+
+- `instruction surfaces` - The requested skill, agent instructions, rules, or equivalent guidance.
+- `repository evidence` - Nearby code, package metadata, tests, workflows, docs, validator output, and active client behavior.
+
+## Outputs
+
+- `review findings` - Prioritized issues with impact, evidence, confidence, and a concrete fix.
+- `focused edits` - Approved instruction changes with validation evidence and remaining risks.
+
 ## Review Workflow
+
+Use `instruction surfaces` and `repository evidence` to produce `review findings` or `focused edits`.
 
 1. Inventory relevant instruction files, skill folders, metadata, scripts, references, assets, and nested overrides.
 2. Identify the active consumer: Codex, Claude Code, GitHub Copilot, Cursor, Windsurf, OpenClaw, another agent, or a portable mix.
@@ -33,7 +45,9 @@ Use this skill to treat agent-facing instructions as maintained project code. St
 - Use `npx agentlinter` for AGENTS.md/CLAUDE.md-style workspace checks when available; treat generated reports as advisory and inspect proposed fixes before applying them.
 - Use secret scanners already configured by the repo when guidance files include tokens, keys, private URLs, or copied logs.
 
-## Review Criteria
+## Evaluation Criteria
+
+Apply these criteria to `instruction surfaces` when producing `review findings` or `focused edits`.
 
 - Instructions must be specific enough to change agent behavior: exact package managers, commands, paths, review priorities, and escalation points beat vague style advice.
 - Instructions must not conflict across files. If they do, preserve the narrower or newer project truth and remove stale duplication.
@@ -54,6 +68,6 @@ When the user asks for improvements, make focused edits instead of rewriting eve
 4. Keep Markdown simple. Avoid large persona blocks, motivational text, and restating generic coding-agent behavior.
 5. Re-run the relevant validators and lint tools. If a tool is unavailable or would require installing new dependencies, state that in the result.
 
-## Output
+## Reporting
 
 For reviews, lead with findings by severity and include file, impact, evidence, confidence, and a concrete fix. For fix work, finish with changed instruction surfaces, validation commands, remaining risks, and any current-doc sources used.

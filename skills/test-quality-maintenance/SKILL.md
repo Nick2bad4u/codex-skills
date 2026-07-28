@@ -5,7 +5,17 @@ description: Generates, repairs, and improves tests and coverage. Use when writi
 
 # Test Quality Maintenance
 
-Use this skill for test work where the goal is behavior confidence, not line-count padding.
+Use this skill for test work where the goal is behavior confidence, not line-count padding. Use `implementation and existing tests` with `failure or coverage evidence` to produce `validated test changes` and identify `remaining test gaps`.
+
+## Inputs
+
+- `implementation and existing tests` - The public behavior, source, tests, fixtures, mocks, helpers, and project conventions in scope.
+- `failure or coverage evidence` - Reproduced failures, coverage reports, error paths, or risk evidence that justifies the work.
+
+## Outputs
+
+- `validated test changes` - Focused tests or root-cause fixes with relevant commands passing.
+- `remaining test gaps` - Intentionally untested behavior, residual risks, and reasons.
 
 ## Shared Workflow
 
@@ -32,6 +42,6 @@ Cover validation errors, external service failures, filesystem or network failur
 
 Only add benchmarks when the project already supports them or the user explicitly wants a benchmark harness. Reuse existing thresholds and CI patterns. Measure latency, allocation, scaling, render time, I/O count, or query count as appropriate. Avoid noisy CI blockers unless the project already has stable budgets.
 
-## Output
+## Reporting
 
 Finish with scenarios covered, bugs fixed, files changed, commands run, coverage result when relevant, and any remaining test gaps.
