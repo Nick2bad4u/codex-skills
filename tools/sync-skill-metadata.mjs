@@ -5,6 +5,10 @@ const root = process.cwd();
 
 const schemaComment =
     "# yaml-language-server: $schema=https://json.schemastore.org/codex-skill-metadata.json";
+const implicitInvocationDisabledSkills = new Set([
+    "vsicons-association-recommender",
+    "workspace-continuation",
+]);
 
 /**
  * @typedef {object} SkillDefinition
@@ -15,16 +19,9 @@ const schemaComment =
  * @property {string} glyph
  * @property {string} longTitle
  * @property {string} name
- * @property {SkillPolicy} [policy]
  * @property {string} prompt
  * @property {string} shortDescription
  * @property {string} shortTitle
- */
-
-/**
- * @typedef {object} SkillPolicy
- *
- * @property {boolean} [allowImplicitInvocation]
  */
 
 /** @type {SkillDefinition[]} */
@@ -215,9 +212,6 @@ const skills = [
         glyph: "M144 152h224M144 216h160M144 280h224M176 368h112M344 344l40 40 72-104",
         longTitle: "VSIcons Association Recommender",
         name: "vsicons-association-recommender",
-        policy: {
-            allowImplicitInvocation: false,
-        },
         prompt: "Use $vsicons-association-recommender to recommend vscode-icons associations for this workspace.",
         shortDescription: "Recommend vscode-icons settings blocks",
         shortTitle: "🎭",
@@ -228,9 +222,6 @@ const skills = [
         glyph: "M152 176h136c56 0 96 40 96 88s-40 88-96 88H168M152 176l64-64M152 176l64 64",
         longTitle: "Workspace Continuation",
         name: "workspace-continuation",
-        policy: {
-            allowImplicitInvocation: false,
-        },
         prompt: "Use $workspace-continuation to resume this task from the current workspace state.",
         shortDescription: "Continue work, plans, or handoffs",
         shortTitle: "⏭️",
@@ -564,11 +555,12 @@ interface:
  * @returns {string}
  */
 function policyYaml(skill) {
-    const allowImplicitInvocation =
-        skill.policy?.allowImplicitInvocation ?? true;
+    const isImplicitInvocationAllowed = !implicitInvocationDisabledSkills.has(
+        skill.name
+    );
 
     return `policy:
-    allow_implicit_invocation: ${String(allowImplicitInvocation)}`;
+    allow_implicit_invocation: ${String(isImplicitInvocationAllowed)}`;
 }
 
 /**
