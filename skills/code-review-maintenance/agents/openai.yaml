@@ -6,3 +6,6 @@ interface:
     icon_large: "./assets/code-review-maintenance.svg"
     icon_small: "./assets/code-review-maintenance-small.svg"
     short_description: "Review code and fix high-confidence risks"
+
+policy:
+    allow_implicit_invocation: true

@@ -6,3 +6,6 @@ interface:
     icon_large: "./assets/eslint-plugin-maintenance.svg"
     icon_small: "./assets/eslint-plugin-maintenance-small.svg"
     short_description: "Bootstrap and maintain ESLint plugins"
+
+policy:
+    allow_implicit_invocation: true

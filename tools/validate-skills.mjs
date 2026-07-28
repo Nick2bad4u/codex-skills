@@ -5,6 +5,10 @@ const root = process.cwd();
 const skillsRoot = path.join(root, "skills");
 const openaiYamlSchemaComment =
     "# yaml-language-server: $schema=https://json.schemastore.org/codex-skill-metadata.json";
+const implicitInvocationDisabledSkills = new Set([
+    "vsicons-association-recommender",
+    "workspace-continuation",
+]);
 
 /**
  * @param {unknown} condition
@@ -184,6 +188,10 @@ async function validateSkill(skillName) {
     const displayName = yamlValue(openaiYaml, "display_name");
     const iconLarge = yamlValue(openaiYaml, "icon_large");
     const iconSmall = yamlValue(openaiYaml, "icon_small");
+    const implicitInvocationSetting = yamlValue(
+        openaiYaml,
+        "allow_implicit_invocation"
+    );
     const shortDescription = yamlValue(openaiYaml, "short_description");
 
     assert(
@@ -202,6 +210,13 @@ async function validateSkill(skillName) {
     assert(
         defaultPrompt?.includes(`$${skillName}`) === true,
         `${skillName} default_prompt must mention $${skillName}`
+    );
+    assert(
+        implicitInvocationSetting ===
+            String(!implicitInvocationDisabledSkills.has(skillName)),
+        `${skillName} allow_implicit_invocation must be ${
+            implicitInvocationDisabledSkills.has(skillName) ? "false" : "true"
+        }`
     );
 
     assert(

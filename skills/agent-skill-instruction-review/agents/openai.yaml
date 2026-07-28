@@ -6,3 +6,6 @@ interface:
     icon_large: "./assets/agent-skill-instruction-review.svg"
     icon_small: "./assets/agent-skill-instruction-review-small.svg"
     short_description: "Audit skills and agent instructions"
+
+policy:
+    allow_implicit_invocation: true

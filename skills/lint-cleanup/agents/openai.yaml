@@ -6,3 +6,6 @@ interface:
     icon_large: "./assets/lint-cleanup.svg"
     icon_small: "./assets/lint-cleanup-small.svg"
     short_description: "Fix lint failures without shortcuts"
+
+policy:
+    allow_implicit_invocation: true

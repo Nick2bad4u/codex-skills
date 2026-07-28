@@ -8,4 +8,4 @@ interface:
     short_description: "Prepare mergeable SchemaStore PRs"
 
 policy:
-    allow_implicit_invocation: false
+    allow_implicit_invocation: true

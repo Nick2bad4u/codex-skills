@@ -6,3 +6,6 @@ interface:
     icon_large: "./assets/test-quality-maintenance.svg"
     icon_small: "./assets/test-quality-maintenance-small.svg"
     short_description: "Fix tests and improve coverage"
+
+policy:
+    allow_implicit_invocation: true

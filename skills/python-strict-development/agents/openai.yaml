@@ -6,3 +6,6 @@ interface:
     icon_large: "./assets/python-strict-development.svg"
     icon_small: "./assets/python-strict-development-small.svg"
     short_description: "Maintain strict Python quality gates"
+
+policy:
+    allow_implicit_invocation: true

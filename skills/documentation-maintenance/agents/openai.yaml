@@ -6,3 +6,6 @@ interface:
     icon_large: "./assets/documentation-maintenance.svg"
     icon_small: "./assets/documentation-maintenance-small.svg"
     short_description: "Fix docs, TSDoc, TypeDoc, and sites"
+
+policy:
+    allow_implicit_invocation: true

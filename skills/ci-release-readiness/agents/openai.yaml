@@ -8,4 +8,4 @@ interface:
     short_description: "Fix CI failures and verify releases"
 
 policy:
-    allow_implicit_invocation: false
+    allow_implicit_invocation: true

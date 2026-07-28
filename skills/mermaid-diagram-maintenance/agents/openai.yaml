@@ -8,4 +8,4 @@ interface:
     short_description: "Create and theme Mermaid diagrams"
 
 policy:
-    allow_implicit_invocation: false
+    allow_implicit_invocation: true

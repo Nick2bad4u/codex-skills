@@ -35,9 +35,6 @@ const skills = [
         glyph: "M152 168h208M152 232h152M152 296h208M184 376l64-64 40 40 72-96",
         longTitle: "Agent Skill Instruction Creation",
         name: "agent-skill-instruction-creation",
-        policy: {
-            allowImplicitInvocation: false,
-        },
         prompt: "Use $agent-skill-instruction-creation to create agent skills or instructions for this project.",
         shortDescription: "Create skills and agent instructions",
         shortTitle: "🧩",
@@ -58,9 +55,6 @@ const skills = [
         glyph: "M144 304h224M176 240l56 56 112-128M120 392h272",
         longTitle: "CI Release Readiness",
         name: "ci-release-readiness",
-        policy: {
-            allowImplicitInvocation: false,
-        },
         prompt: "Use $ci-release-readiness to debug the failing check or validate this release candidate.",
         shortDescription: "Fix CI failures and verify releases",
         shortTitle: "🚦",
@@ -131,9 +125,6 @@ const skills = [
         glyph: "M144 176h96v64h-96zM272 176h96v64h-96zM208 304h96v64h-96zM240 208h32M320 240v32l-40 32M192 240v32l40 32",
         longTitle: "Mermaid Diagram Maintenance",
         name: "mermaid-diagram-maintenance",
-        policy: {
-            allowImplicitInvocation: false,
-        },
         prompt: "Use $mermaid-diagram-maintenance to create or improve Mermaid diagrams for this project.",
         shortDescription: "Create and theme Mermaid diagrams",
         shortTitle: "🧜‍♀️",
@@ -144,9 +135,6 @@ const skills = [
         glyph: "M144 184l112-64 112 64v144l-112 64-112-64zM144 184l112 64 112-64M256 248v144M184 304l48 48 96-112",
         longTitle: "npm 12 Migration",
         name: "npm-12-migration",
-        policy: {
-            allowImplicitInvocation: false,
-        },
         prompt: "Use $npm-12-migration to migrate this repository from npm 11 to npm 12 and validate the result.",
         shortDescription: "Migrate npm projects to npm 12 safely",
         shortTitle: "npm12",
@@ -157,9 +145,6 @@ const skills = [
         glyph: "M144 184h224M160 256h192M184 328h144M136 384c56-104 184-120 240-40M376 128l16 32 32 16-32 16-16 32-16-32-32-16 32-16z",
         longTitle: "Prettier Plugin Maintenance",
         name: "prettier-plugin-maintenance",
-        policy: {
-            allowImplicitInvocation: false,
-        },
         prompt: "Use $prettier-plugin-maintenance to build, audit, or update this Prettier plugin repository.",
         shortDescription: "Bootstrap and maintain Prettier plugins",
         shortTitle: "💅",
@@ -180,9 +165,6 @@ const skills = [
         glyph: "M152 320h208M184 256l72-72 72 72M256 184v176M152 392h208M368 152l32 32 64-80",
         longTitle: "Release Publish Loop",
         name: "release-publish-loop",
-        policy: {
-            allowImplicitInvocation: false,
-        },
         prompt: "Use $release-publish-loop to push this release candidate, watch CI, and publish it when ready.",
         shortDescription: "Push, watch CI, and publish releases",
         shortTitle: "✅",
@@ -193,9 +175,6 @@ const skills = [
         glyph: "M152 152h208M152 216h152M152 280h208M184 360h144M344 344l40 40 72-104",
         longTitle: "Remark Plugin Maintenance",
         name: "remark-plugin-maintenance",
-        policy: {
-            allowImplicitInvocation: false,
-        },
         prompt: "Use $remark-plugin-maintenance to build, audit, or update this remark plugin repository.",
         shortDescription: "Bootstrap and maintain remark plugins",
         shortTitle: "🔌",
@@ -206,9 +185,6 @@ const skills = [
         glyph: "M176 152l-64 104 64 104M336 152l64 104-64 104M224 360l64-208M184 408h144M344 392l32 32 64-80",
         longTitle: "SchemaStore PR Maintenance",
         name: "schemastore-pr-maintenance",
-        policy: {
-            allowImplicitInvocation: false,
-        },
         prompt: "Use $schemastore-pr-maintenance to prepare or review this SchemaStore PR.",
         shortDescription: "Prepare mergeable SchemaStore PRs",
         shortTitle: "{}",
@@ -219,9 +195,6 @@ const skills = [
         glyph: "M144 336c64-128 128-160 224-160M176 360c64 32 144 24 192-48M144 184c48-48 144-64 224-24",
         longTitle: "Stylelint Plugin Maintenance",
         name: "stylelint-plugin-maintenance",
-        policy: {
-            allowImplicitInvocation: false,
-        },
         prompt: "Use $stylelint-plugin-maintenance to build, audit, or update this Stylelint plugin repository.",
         shortDescription: "Bootstrap and maintain Stylelint plugins",
         shortTitle: "🎨",
@@ -591,12 +564,11 @@ interface:
  * @returns {string}
  */
 function policyYaml(skill) {
-    if (skill.policy?.allowImplicitInvocation === undefined) {
-        return "";
-    }
+    const allowImplicitInvocation =
+        skill.policy?.allowImplicitInvocation ?? true;
 
     return `policy:
-    allow_implicit_invocation: ${String(skill.policy.allowImplicitInvocation)}`;
+    allow_implicit_invocation: ${String(allowImplicitInvocation)}`;
 }
 
 /**

@@ -6,3 +6,6 @@ interface:
     icon_large: "./assets/github-actions-workflow-maintenance.svg"
     icon_small: "./assets/github-actions-workflow-maintenance-small.svg"
     short_description: "Create, review, and repair workflows"
+
+policy:
+    allow_implicit_invocation: true
