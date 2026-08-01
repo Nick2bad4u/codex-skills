@@ -1,4 +1,4 @@
-# yaml-language-server: $schema=https://json.schemastore.org/codex-skill-metadata.json
+# yaml-language-server: $schema=https://www.schemastore.org/codex-skill-metadata.json
 interface:
     brand_color: "#8B5CF6"
     default_prompt: "Use $stylelint-plugin-maintenance to build, audit, or update this Stylelint plugin repository."

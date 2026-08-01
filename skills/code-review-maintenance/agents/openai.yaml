@@ -1,4 +1,4 @@
-# yaml-language-server: $schema=https://json.schemastore.org/codex-skill-metadata.json
+# yaml-language-server: $schema=https://www.schemastore.org/codex-skill-metadata.json
 interface:
     brand_color: "#2563EB"
     default_prompt: "Use $code-review-maintenance to review this repository or file and handle high-confidence issues."

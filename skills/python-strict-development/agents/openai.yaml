@@ -1,4 +1,4 @@
-# yaml-language-server: $schema=https://json.schemastore.org/codex-skill-metadata.json
+# yaml-language-server: $schema=https://www.schemastore.org/codex-skill-metadata.json
 interface:
     brand_color: "#1fc893"
     default_prompt: "Use $python-strict-development to add or repair strict Python lint, typecheck, test, and editor tooling."

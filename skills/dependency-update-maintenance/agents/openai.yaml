@@ -1,4 +1,4 @@
-# yaml-language-server: $schema=https://json.schemastore.org/codex-skill-metadata.json
+# yaml-language-server: $schema=https://www.schemastore.org/codex-skill-metadata.json
 interface:
     brand_color: "#0EA5E9"
     default_prompt: "Use $dependency-update-maintenance to validate or perform dependency updates safely."

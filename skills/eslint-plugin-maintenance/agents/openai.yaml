@@ -1,4 +1,4 @@
-# yaml-language-server: $schema=https://json.schemastore.org/codex-skill-metadata.json
+# yaml-language-server: $schema=https://www.schemastore.org/codex-skill-metadata.json
 interface:
     brand_color: "#2656c7"
     default_prompt: "Use $eslint-plugin-maintenance to build, audit, or update this ESLint plugin repository."

@@ -4,7 +4,7 @@ import * as path from "node:path";
 const root = process.cwd();
 
 const schemaComment =
-    "# yaml-language-server: $schema=https://json.schemastore.org/codex-skill-metadata.json";
+    "# yaml-language-server: $schema=https://www.schemastore.org/codex-skill-metadata.json";
 const implicitInvocationDisabledSkills = new Set([
     "vsicons-association-recommender",
     "workspace-continuation",
