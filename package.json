@@ -83,8 +83,8 @@
         "lint:tsdoc": "node tools/validate-tsdoc-config.mjs",
         "lint:yamllint": "yamllint -c .yamllint .",
         "metadata:sync": "node tools/sync-skill-metadata.mjs",
-        "pack:dry-run": "npm pack --dry-run",
-        "publish:local": "npm run release:verify && npm publish --access public",
+        "pack:dry-run": "npm pack --dry-run --allow-directory=all",
+        "publish:local": "npm run release:verify && npm publish --access public --allow-directory=all",
         "pyright": "pyright",
         "python:bootstrap": "python -m pip install --require-hashes -r requirements-dev.lock",
         "python:venv": "python -m venv .venv && .venv\\Scripts\\activate && python -m pip install --require-hashes -r requirements-dev.lock",
@@ -104,16 +104,22 @@
         "typecheck:python": "mypy && pyright",
         "update-actions": "npx actions-up --yes --style sha",
         "update-all": "npm run update-actions && npm run update-deps",
-        "update-deps": "npx ncu --configFileName .ncurc.json --configFilePath node_modules/ncu-config-nick2bad4u && npm update --force && npm install --force",
+        "update-deps": "npx ncu --configFileName .ncurc.json --configFilePath node_modules/ncu-config-nick2bad4u && npm install",
         "validate": "node tools/validate-skills.mjs && node tools/audit-skill-surfaces.mjs"
     },
     "overrides": {
-        "esbuild": "0.28.1"
+        "esbuild": "0.28.1",
+        "remark-lint-frontmatter-schema": {
+            "@apidevtools/json-schema-ref-parser": "15.5.1",
+            "ajv": "8.20.0",
+            "minimatch": "9.0.9",
+            "yaml": "2.9.0"
+        }
     },
     "devDependencies": {
         "@microsoft/tsdoc-config": "^0.18.1",
         "eslint": "^10.8.0",
-        "eslint-config-nick2bad4u": "^11.0.1",
+        "eslint-config-nick2bad4u": "^12.0.1",
         "git-cliff": "^2.13.1",
         "gitcliff-config-nick2bad4u": "^1.4.0",
         "gitleaks-config-nick2bad4u": "^1.0.4",
@@ -125,7 +131,7 @@
         "npm-package-json-lint": "^10.4.1",
         "npm-package-json-lint-config-nick2bad4u": "^1.0.4",
         "prettier": "^3.9.6",
-        "prettier-config-nick2bad4u": "^1.1.1",
+        "prettier-config-nick2bad4u": "^2.0.1",
         "remark": "^15.0.1",
         "remark-cli": "^12.0.1",
         "remark-config-nick2bad4u": "^1.1.3",
@@ -133,15 +139,22 @@
         "secretlint": "^13.0.4",
         "secretlint-config-nick2bad4u": "^1.1.2",
         "stylelint": "^17.14.1",
-        "stylelint-config-nick2bad4u": "^1.0.20",
+        "stylelint-config-nick2bad4u": "^2.1.0",
         "tsdoc-config-nick2bad4u": "^1.0.6",
         "yamllint-config-nick2bad4u": "^1.1.1"
     },
+    "packageManager": "npm@12.0.2",
     "engines": {
         "node": ">=22.16.0"
     },
     "publishConfig": {
         "access": "public",
         "provenance": true
+    },
+    "allowScripts": {
+        "core-js": false,
+        "esbuild@0.28.1": true,
+        "fsevents": false,
+        "unrs-resolver@1.12.2": true
     }
 }

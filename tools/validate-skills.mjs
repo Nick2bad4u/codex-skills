@@ -143,7 +143,7 @@ async function main() {
 function stripMatchingQuotes(value) {
     const first = value.at(0);
     const last = value.at(-1);
-    if ((first === '"' || first === "'") && first === last) {
+    if (first === last && (first === '"' || first === "'")) {
         return value.slice(1, -1);
     }
     return value;
