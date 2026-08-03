@@ -1,0 +1,11 @@
+# yaml-language-server: $schema=https://www.schemastore.org/codex-skill-metadata.json
+interface:
+    brand_color: "#5391FE"
+    default_prompt: "Use $powershell-development to build, review, test, or harden this PowerShell code."
+    display_name: "PowerShell Development"
+    icon_large: "./assets/powershell-development.svg"
+    icon_small: "./assets/powershell-development-small.svg"
+    short_description: "Build and test safe PowerShell automation"
+
+policy:
+    allow_implicit_invocation: true

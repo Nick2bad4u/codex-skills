@@ -137,6 +137,16 @@ const skills = [
         shortTitle: "npm12",
     },
     {
+        accent: "#5391FE",
+        displayName: "PowerShell Development",
+        glyph: "M136 144h240v224H136zM176 208l64 48-64 48M264 304h72",
+        longTitle: "PowerShell Development",
+        name: "powershell-development",
+        prompt: "Use $powershell-development to build, review, test, or harden this PowerShell code.",
+        shortDescription: "Build and test safe PowerShell automation",
+        shortTitle: "PS",
+    },
+    {
         accent: "#C596C7",
         displayName: "Prettier Plugin Maintenance",
         glyph: "M144 184h224M160 256h192M184 328h144M136 384c56-104 184-120 240-40M376 128l16 32 32 16-32 16-16 32-16-32-32-16 32-16z",
