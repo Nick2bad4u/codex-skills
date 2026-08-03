@@ -66,8 +66,9 @@ jobs:
 
             - name: "Setup npm"
               run: |
-                  npm install --global npm@12.0.2
-                  npm --version
+                  npm install --global npm@12.0.2 --prefix "${RUNNER_TEMP}/npm"
+                  echo "${RUNNER_TEMP}/npm/bin" >> "${GITHUB_PATH}"
+                  "${RUNNER_TEMP}/npm/bin/npm" --version
 
             - name: "Setup Python"
               uses: "actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97" # v7.0.0
