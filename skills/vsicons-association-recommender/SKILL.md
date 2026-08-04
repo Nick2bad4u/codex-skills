@@ -25,7 +25,7 @@ Before every recommendation, locate and inspect the applicable VS Code settings 
 - Search every existing object's `extensions` array for the target name. If it is already assigned, report the settings file, destination key, current `icon`, and whether the entry is in the correct file/folder array; do not recommend a duplicate.
 - In the correct array, also search for an existing object that already uses the recommended `icon`, `format`, and filename semantics. Tell the user to append the target to that object's `extensions` array instead of creating a duplicate icon object.
 - If no reusable object exists, tell the user to add a new object under the exact `vsicons.associations.files` or `vsicons.associations.folders` key and name the settings file where it belongs.
-- Do not edit settings unless the user explicitly asks. When editing is authorized, preserve unrelated JSONC and verify each requested target occurs exactly once across both association arrays.
+- Do not edit settings unless the user explicitly asks. After returning read-only recommendations, offer to make the approved association changes for the user in a separately authorized follow-up; the offer itself is not authorization to edit settings. When editing is authorized, preserve unrelated JSONC and verify each requested target occurs exactly once across both association arrays.
 
 ## Local Custom Icons
 
@@ -93,6 +93,8 @@ Use this folder form:
 When the user asks for a full settings block, wrap file snippets in `"vsicons.associations.files": []` and folder snippets in `"vsicons.associations.folders": []`. Otherwise, return the snippets only.
 
 Always identify the inspected settings file and exact destination key. For each candidate, say one of: already assigned and omitted; append to an existing object and name its `icon`; or add the shown object as a new entry. This placement note is required even when the user requests snippets only.
+
+For recommendation-only work, finish with a direct offer to make the approved settings changes after the user authorizes editing.
 
 ## Selection Rules
 
