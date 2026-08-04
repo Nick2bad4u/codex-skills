@@ -5,7 +5,7 @@ description: Migrates npm-managed repositories from npm 11 or older to npm 12 wi
 
 # npm 12 Migration
 
-Treat this as a toolchain and supply-chain migration, not a version-string edit. Preserve repository conventions and the user's requested mode: audit-only requests stay read-only; implementation requests include the migration and proportional validation.
+Treat this as a toolchain and supply-chain migration, not a version-string edit. Preserve repository conventions and the user's requested mode: audit-only requests stay read-only; implementation requests include the migration and proportional validation. After an audit-only result, offer to apply the recommended changes in a separately authorized follow-up; the offer itself is not authorization to edit files.
 
 Read [npm-12-migration.md](references/npm-12-migration.md) before changing files. Refresh the latest npm 12 release notes and official docs when current behavior matters.
 
@@ -39,4 +39,4 @@ Read [npm-12-migration.md](references/npm-12-migration.md) before changing files
 
 ## Output
 
-Finish with the source and target npm/Node versions, lifecycle approvals and denials, source-policy decisions, files changed, exact validation commands and results, remaining skipped scripts or compatibility risks, and whether CI/release automation is proven on npm 12.
+Finish with the source and target npm/Node versions, lifecycle approvals and denials, source-policy decisions, files changed, exact validation commands and results, remaining skipped scripts or compatibility risks, and whether CI/release automation is proven on npm 12. For audit-only work, end with a direct offer to make the recommended changes for the user after they authorize implementation.
