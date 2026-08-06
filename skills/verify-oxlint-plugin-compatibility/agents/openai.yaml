@@ -1,0 +1,11 @@
+# yaml-language-server: $schema=https://www.schemastore.org/codex-skill-metadata.json
+interface:
+    brand_color: "#7C3AED"
+    default_prompt: "Use $verify-oxlint-plugin-compatibility to verify this ESLint plugin with Oxlint and document the result."
+    display_name: "Verify Oxlint Plugin Compatibility"
+    icon_large: "./assets/verify-oxlint-plugin-compatibility.svg"
+    icon_small: "./assets/verify-oxlint-plugin-compatibility-small.svg"
+    short_description: "Verify ESLint plugins with Oxlint"
+
+policy:
+    allow_implicit_invocation: false

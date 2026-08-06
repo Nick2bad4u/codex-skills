@@ -18,6 +18,7 @@ Personal multi-skill repository for reusable Codex workflows that are useful loc
 - `remark-plugin-maintenance`: bootstrap, audit, and maintain remark and remark-lint plugins.
 - `stylelint-plugin-maintenance`: bootstrap, audit, and maintain Stylelint plugin repositories.
 - `test-quality-maintenance`: add, repair, and improve tests, coverage, e2e, and benchmarks.
+- `verify-oxlint-plugin-compatibility`: verify, diagnose, test, and document Oxlint support in ESLint plugin repositories.
 - `vsicons-association-recommender`: recommend vscode-icons associations for workspace files.
 - `workspace-continuation`: continue active work, implement plans, and write handoffs.
 

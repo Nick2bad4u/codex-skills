@@ -6,6 +6,7 @@ const skillsRoot = path.join(root, "skills");
 const openaiYamlSchemaComment =
     "# yaml-language-server: $schema=https://www.schemastore.org/codex-skill-metadata.json";
 const implicitInvocationDisabledSkills = new Set([
+    "verify-oxlint-plugin-compatibility",
     "vsicons-association-recommender",
     "workspace-continuation",
 ]);

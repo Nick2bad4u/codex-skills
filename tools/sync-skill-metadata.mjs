@@ -6,6 +6,7 @@ const root = process.cwd();
 const schemaComment =
     "# yaml-language-server: $schema=https://www.schemastore.org/codex-skill-metadata.json";
 const implicitInvocationDisabledSkills = new Set([
+    "verify-oxlint-plugin-compatibility",
     "vsicons-association-recommender",
     "workspace-continuation",
 ]);
@@ -215,6 +216,16 @@ const skills = [
         prompt: "Use $test-quality-maintenance to add or repair tests and verify the affected behavior.",
         shortDescription: "Fix tests and improve coverage",
         shortTitle: "🧪",
+    },
+    {
+        accent: "#7C3AED",
+        displayName: "Verify Oxlint Plugin Compatibility",
+        glyph: "M128 152h256v208H128zM176 208h160M176 256h112M176 304h80M312 304l32 32 64-80",
+        longTitle: "Verify Oxlint Plugin Compatibility",
+        name: "verify-oxlint-plugin-compatibility",
+        prompt: "Use $verify-oxlint-plugin-compatibility to verify this ESLint plugin with Oxlint and document the result.",
+        shortDescription: "Verify ESLint plugins with Oxlint",
+        shortTitle: "OXL",
     },
     {
         accent: "#2563EB",
