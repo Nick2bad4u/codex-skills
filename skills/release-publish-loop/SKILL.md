@@ -29,8 +29,11 @@ Use this skill when the user authorizes an end-to-end release process that can m
 1. Run the closest local gate before pushing. Prefer the repo's aggregate release gate when practical.
 2. Fix root-cause failures in code, tests, config, docs, generated outputs, workflows, or dependencies.
 3. Rerun the failed command and then the broader release gate.
-4. If changes need committing, follow the repository commit-message instructions. Stage explicit paths, verify `git diff --cached --check`, and commit coherent groups.
-5. Confirm the final local tree is clean or contains only unrelated changes that the user intentionally left out.
+4. Classify dependency vulnerabilities by exposure. Require zero unresolved known vulnerabilities in dependencies that ship with or execute in the production artifact. For libraries, consumer-supplied peers are not shipped dependencies; for applications, include peers that execute in production.
+5. Triage development-only and peer-only findings by severity, reachability, exploit conditions, fix availability, and access to untrusted input or secrets. They are not automatic release blockers, but malware, actionable high or critical findings, release-path exposure, or impact on generated or published artifacts must block release. Document accepted residual findings and rationale.
+6. Do not bypass a stricter repository-configured security gate. Report the policy mismatch and change the gate only when the user authorizes that scope.
+7. If changes need committing, follow the repository commit-message instructions. Stage explicit paths, verify `git diff --cached --check`, and commit coherent groups.
+8. Confirm the final local tree is clean or contains only unrelated changes that the user intentionally left out.
 
 ## Push And Watch CI
 

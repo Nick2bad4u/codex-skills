@@ -30,9 +30,10 @@ Use this skill for GitHub Actions failures, release checks, dependency-update fa
 1. Determine the repository's real release gate from scripts, docs, workflows, and package metadata.
 2. Prefer aggregate commands such as `release:verify`, `release:check`, `ci`, package validation, docs build, and publish dry run when they exist.
 3. For dependency updates, verify manifests, lockfiles, workspace metadata, overrides, peers, engines, package manager metadata, generated outputs, and CI workflows agree.
-4. Fix every actionable lint, type, test, build, docs, generated-output, package, or release-script failure at the root cause.
-5. If the package is published, check whether the target/current version already exists before declaring it release-ready.
-6. Rerun the full relevant gate after fixes.
+4. Classify dependency vulnerabilities by shipped or deployed runtime, development-only, and peer-only exposure. Require zero unresolved known vulnerabilities in the production graph. Triage development-only and consumer-supplied peer findings by severity, reachability, exploit conditions, fix availability, CI or release exposure, and artifact impact; they are not automatic blockers, but malware, actionable high or critical findings, or credible production or release-path exposure must block readiness.
+5. Fix every actionable lint, type, test, build, docs, generated-output, package, or release-script failure at the root cause.
+6. If the package is published, check whether the target/current version already exists before declaring it release-ready.
+7. Rerun the full relevant gate after fixes.
 
 ## Boundaries
 

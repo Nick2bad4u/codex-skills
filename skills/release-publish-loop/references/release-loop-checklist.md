@@ -6,6 +6,7 @@ Use this checklist before a remote push or publish workflow dispatch.
 
 - [Repository State](#repository-state)
 - [Local Gates](#local-gates)
+- [Dependency Vulnerabilities](#dependency-vulnerabilities)
 - [GitHub CI](#github-ci)
 - [External Quality Gates](#external-quality-gates)
 - [Semver Evidence](#semver-evidence)
@@ -42,6 +43,22 @@ npm pack --dry-run
 
 Use equivalent package-manager or language commands when the repository is not npm-based. Do not publish from a failed or skipped gate unless the user explicitly accepts a documented external blocker.
 
+## Dependency Vulnerabilities
+
+Run a production-focused audit and a full-tree audit when the package manager supports that distinction. For an npm library, a useful baseline is:
+
+```powershell
+npm audit --omit=dev --omit=peer
+npm audit
+```
+
+- Require zero unresolved known vulnerabilities in the shipped or deployed runtime graph. Include direct and transitive runtime dependencies, bundled dependencies, and optional dependencies that install or execute in production.
+- Treat development-only and consumer-supplied peer findings as risk-based findings, not automatic blockers. Review severity, reachability, exploit conditions, fix availability, untrusted-input handling, CI or release secret access, and whether the vulnerable code can affect generated or published artifacts.
+- Block malware, actionable high or critical findings, and any finding with a credible production, install, build, CI, or release-path exposure. Record the package path, scope, decision, reason, and remediation status for accepted residual findings.
+- For applications, audit the actual deployed tree and include peers or optional packages that execute in production. For libraries, do not narrow a supported peer range merely to hide an advisory in a consumer-supplied package.
+- Do not use `npm audit fix --force`, overrides, or suppressions as proof of safety. Verify the resolved tree and rerun both audit scopes after remediation.
+- If a repository intentionally enforces a stricter gate, do not bypass it during a release. Report the mismatch and change the gate only with authorization.
+
 ## GitHub CI
 
 After pushing:
@@ -73,7 +90,7 @@ gh run view <run-id> --json jobs,conclusion,status,url
 ```
 
 - If SonarCloud or SonarQube is configured, inspect the GitHub check, scanner logs, quality gate result, and actionable findings.
-- Fix root causes before publishing. Do not waive or ignore maintainability, reliability, security hotspot, vulnerability, coverage, or duplication failures unless the user explicitly accepts a documented false positive or external blocker.
+- Fix root causes before publishing. Do not waive or ignore maintainability, reliability, security hotspot, coverage, or duplication failures unless the user explicitly accepts a documented false positive or external blocker. Apply the dependency-vulnerability policy above to dependency findings instead of requiring a clean full development tree by default.
 - Revalidate locally where possible, then push and watch the replacement commit until the quality gate passes.
 
 ## Semver Evidence

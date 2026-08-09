@@ -24,8 +24,9 @@ Use this skill for dependency-update work where the goal is to prove the reposit
 6. Install from the lockfile after updates and run the narrowest relevant command that proves the changed surface.
 7. Fix root causes: API migration, config option changes, stricter types, changed lint rules, missing peer deps, lockfile metadata drift, workflow input changes, or test fixture expectations.
 8. Broaden validation after targeted fixes: tests, typecheck, lint, build, docs, package checks, security scans, and release verification when the repo has those gates.
-9. Preserve support contracts. Do not broaden peer ranges, loosen engines, add overrides, pin transitive packages, or suppress diagnostics without evidence and a reason.
-10. Review the final diff for unrelated churn, generated-file scope, lockfile consistency, and dependency changes the user did not mention.
+9. Classify vulnerability findings by shipped or deployed runtime, development-only, and peer-only exposure. Require zero unresolved known vulnerabilities in the production graph. Triage development-only and consumer-supplied peer findings instead of treating a nonzero full-tree count as an automatic failure; malware, actionable high or critical findings, or credible production, build, CI, release, or artifact exposure still require remediation.
+10. Preserve support contracts. Do not broaden peer ranges, loosen engines, add overrides, pin transitive packages, or suppress diagnostics without evidence and a reason.
+11. Review the final diff for unrelated churn, generated-file scope, lockfile consistency, and dependency changes the user did not mention.
 
 ## Reference
 

@@ -22,7 +22,11 @@
 - Transitive-only lock updates still need install and at least smoke validation when they affect runtime, build, native, security, or package-manager metadata.
 - Type-only package changes can still break strict typechecks.
 - Lint, formatter, and static-analysis package updates can create new valid findings; fix code/config rather than disabling rules.
-- Security updates should prove the vulnerable package is actually upgraded in the lockfile and no override keeps the vulnerable version reachable.
+- Security updates should prove the vulnerable package is actually upgraded in the lockfile and no override keeps the vulnerable version reachable in the affected dependency graph.
+- Require zero unresolved known vulnerabilities in dependencies that ship with or execute in production. Include bundled and production optional dependencies.
+- Do not make a nonzero development-only or consumer-supplied peer count an automatic failure. Triage severity, reachability, exploit conditions, fix availability, untrusted-input handling, CI or release secret access, and generated or published artifact impact.
+- Block malware, actionable high or critical findings, and credible production, install, build, CI, release, or artifact exposure. Document accepted residual findings with their package path, scope, rationale, and remediation status.
+- For applications, include peers and optional packages that execute in production. For libraries, preserve supported peer contracts unless evidence shows the package exposes vulnerable peer behavior; do not narrow a peer range merely to silence an audit.
 - For owned sibling packages, prefer fixing the owned package's public types or metadata over downstream casts or suppressions.
 
 ## Ecosystem Commands
