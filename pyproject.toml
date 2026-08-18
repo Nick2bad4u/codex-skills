@@ -6,6 +6,7 @@
     parallel = true
     patch = [ "subprocess" ]
     source = [
+        "skills/codacy-management/scripts",
         "skills/dependency-update-maintenance/scripts",
         "skills/python-strict-development/scripts",
         "skills/schemastore-pr-maintenance/scripts",

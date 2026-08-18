@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -17,6 +18,25 @@ DEPENDENCY_AUDIT_SCRIPT = (
 )
 INVENTORY_SCRIPT = REPO_ROOT / "skills" / "vsicons-association-recommender" / "scripts" / "inventory_vsicons.py"
 SCHEMASTORE_AUDIT_SCRIPT = REPO_ROOT / "skills" / "schemastore-pr-maintenance" / "scripts" / "audit_schemastore_pr.py"
+CODACY_SCRIPT = REPO_ROOT / "skills" / "codacy-management" / "scripts" / "manage_codacy.py"
+
+
+def write_codacy_spec(path: Path) -> None:
+    """Write a small Codacy-shaped OpenAPI fixture."""
+    _ = path.write_text(
+        """openapi: 3.0.1
+paths:
+  /analysis/organizations/{provider}/{remoteOrganizationName}/repositories/{repositoryName}:
+    get:
+      summary: Get repository analysis
+      operationId: getRepositoryWithAnalysis
+  /analysis/organizations/{provider}/{remoteOrganizationName}/repositories/{repositoryName}/issues/search:
+    post:
+      summary: Search repository issues
+      operationId: searchRepositoryIssues
+""",
+        encoding="utf-8",
+    )
 
 
 def as_dict(value: object) -> dict[str, object]:
@@ -48,6 +68,7 @@ def run_python(*args: str) -> subprocess.CompletedProcess[str]:
         cwd=REPO_ROOT,
         check=False,
         capture_output=True,
+        stdin=subprocess.DEVNULL,
         text=True,
     )
 
@@ -300,3 +321,276 @@ def test_audit_dependency_update_reports_multiple_ecosystems(tmp_path: Path) -> 
     assert "pnpm install --frozen-lockfile" in as_list(audit["install_commands"])
     assert "go test ./..." in as_list(audit["validation_commands"])
     assert "cargo update" in as_list(audit["update_commands"])
+
+
+def test_codacy_context_detects_github_origin_without_exposing_token(tmp_path: Path) -> None:
+    """Verify Codacy context derives the slug and reports only the token environment name."""
+    initialized = run_python(
+        "-c",
+        "import subprocess,sys; subprocess.run(['git','init',sys.argv[1]],check=True)",
+        str(tmp_path),
+    )
+    remote_added = run_python(
+        "-c",
+        (
+            "import subprocess,sys; "
+            "subprocess.run(['git','-C',sys.argv[1],'remote','add','origin',"
+            "'git@github.com:acme/widget.git'],check=True)"
+        ),
+        str(tmp_path),
+    )
+    assert initialized.returncode == 0, initialized.stderr
+    assert remote_added.returncode == 0, remote_added.stderr
+
+    result = subprocess.run(  # noqa: S603  # Fixed interpreter and local helper arguments; no shell.
+        [sys.executable, str(CODACY_SCRIPT), "context", "--repo", str(tmp_path), "--json"],
+        cwd=REPO_ROOT,
+        check=False,
+        capture_output=True,
+        stdin=subprocess.DEVNULL,
+        text=True,
+        env={**os.environ, "CODACY_API_TOKEN": "top-secret-token"},
+    )
+
+    assert result.returncode == 0, result.stderr
+    payload = as_dict(json.loads(result.stdout))
+    slug = as_dict(payload["slug"])
+    assert slug == {"organization": "acme", "provider": "gh", "repository": "widget"}
+    assert payload["token"] == "configured"  # noqa: S105  # Status label, not a credential.
+    assert payload["tokenEnvironment"] == "CODACY_API_TOKEN"
+    assert "top-secret-token" not in result.stdout
+
+
+def test_codacy_operations_filters_local_openapi_fixture(tmp_path: Path) -> None:
+    """Verify operation discovery parses a local OpenAPI document without a YAML dependency."""
+    spec = tmp_path / "codacy.yaml"
+    write_codacy_spec(spec)
+    result = run_python(
+        str(CODACY_SCRIPT),
+        "operations",
+        "--spec-file",
+        str(spec),
+        "--search",
+        "issues",
+        "--method",
+        "POST",
+        "--json",
+    )
+
+    assert result.returncode == 0, result.stderr
+    payload = as_dict(json.loads(result.stdout))
+    operations = [as_dict(item) for item in as_list(payload["operations"])]
+    assert operations == [
+        {
+            "method": "POST",
+            "operation_id": "searchRepositoryIssues",
+            "path": (
+                "/analysis/organizations/{provider}/{remoteOrganizationName}"
+                "/repositories/{repositoryName}/issues/search"
+            ),
+            "summary": "Search repository issues",
+        }
+    ]
+
+
+def test_codacy_request_resolves_operation_and_previews_non_get(tmp_path: Path) -> None:
+    """Verify operation-based POST requests auto-fill repository parameters and remain previews."""
+    spec = tmp_path / "codacy.yaml"
+    write_codacy_spec(spec)
+    result = run_python(
+        str(CODACY_SCRIPT),
+        "request",
+        "--spec-file",
+        str(spec),
+        "--operation-id",
+        "searchRepositoryIssues",
+        "--provider",
+        "gh",
+        "--organization",
+        "acme",
+        "--repository",
+        "widget",
+        "--body-json",
+        '{"levels":["Error"],"api_token":"must-redact"}',
+        "--json",
+    )
+
+    assert result.returncode == 0, result.stderr
+    preview = as_dict(json.loads(result.stdout))
+    body = as_dict(preview["body"])
+    assert preview["dryRun"] is True
+    assert preview["method"] == "POST"
+    assert str(preview["url"]).endswith("/analysis/organizations/gh/acme/repositories/widget/issues/search")
+    assert body["api_token"] == "<redacted>"  # noqa: S105  # Expected redaction marker.
+    assert "must-redact" not in result.stdout
+
+
+def test_codacy_request_rejects_sensitive_query_and_foreign_origin() -> None:
+    """Verify raw requests reject query secrets and absolute origin escapes."""
+    credentialed_api_url = f"https://{'user'}:{'password'}@api.codacy.com/api/v3/user"
+    sensitive = run_python(
+        str(CODACY_SCRIPT),
+        "request",
+        "/user",
+        "--query",
+        "api-token=secret",
+        "--dry-run",
+    )
+    foreign = run_python(
+        str(CODACY_SCRIPT),
+        "request",
+        "https://example.com/api/v3/user",
+        "--dry-run",
+    )
+    embedded_secret = run_python(
+        str(CODACY_SCRIPT),
+        "request",
+        "/user?api-token=secret",
+        "--dry-run",
+    )
+    url_credentials = run_python(
+        str(CODACY_SCRIPT),
+        "request",
+        credentialed_api_url,
+        "--dry-run",
+    )
+    traversal = run_python(
+        str(CODACY_SCRIPT),
+        "request",
+        "/analysis/../user",
+        "--dry-run",
+    )
+
+    assert sensitive.returncode == 1
+    assert "Refusing token-like query parameter" in sensitive.stderr
+    assert foreign.returncode == 1
+    assert "must match the configured HTTPS origin and API base path" in foreign.stderr
+    assert embedded_secret.returncode == 1
+    assert "Refusing token-like endpoint query parameter" in embedded_secret.stderr
+    assert url_credentials.returncode == 1
+    assert "must not contain URL credentials" in url_credentials.stderr
+    assert "password" not in url_credentials.stderr
+    assert traversal.returncode == 1
+    assert "must not contain traversal path segments" in traversal.stderr
+
+
+def test_codacy_request_requires_explicit_public_get_or_token() -> None:
+    """Verify tokenless GET execution fails while dry-run remains available."""
+    environment = {key: value for key, value in os.environ.items() if key != "CODACY_API_TOKEN"}
+    result = subprocess.run(  # noqa: S603  # Fixed interpreter and local helper arguments; no shell.
+        [sys.executable, str(CODACY_SCRIPT), "request", "/user"],
+        cwd=REPO_ROOT,
+        check=False,
+        capture_output=True,
+        stdin=subprocess.DEVNULL,
+        text=True,
+        env=environment,
+    )
+    dry_run = subprocess.run(  # noqa: S603  # Fixed interpreter and local helper arguments; no shell.
+        [sys.executable, str(CODACY_SCRIPT), "request", "/user", "--dry-run", "--json"],
+        cwd=REPO_ROOT,
+        check=False,
+        capture_output=True,
+        stdin=subprocess.DEVNULL,
+        text=True,
+        env=environment,
+    )
+
+    assert result.returncode == 1
+    assert "No account token found" in result.stderr
+    assert dry_run.returncode == 0, dry_run.stderr
+    assert as_dict(json.loads(dry_run.stdout))["dryRun"] is True
+
+
+def test_codacy_context_rejects_unsafe_or_ambiguous_inputs(tmp_path: Path) -> None:
+    """Verify repository, API-origin, identity, and token-environment safety checks."""
+    credentialed_base_url = f"https://{'user'}:{'pass'}@api.codacy.test/api/v3"
+    initialized = run_python(
+        "-c",
+        "import subprocess,sys; subprocess.run(['git','init',sys.argv[1]],check=True)",
+        str(tmp_path),
+    )
+    assert initialized.returncode == 0, initialized.stderr
+    regular_file = tmp_path / "not-a-repository.txt"
+    _ = regular_file.write_text("fixture", encoding="utf-8")
+    missing_path = tmp_path / "missing"
+    cases = [
+        (["context", "--repo", str(missing_path)], ARGPARSE_USAGE_ERROR, "Repository path does not exist"),
+        (["context", "--repo", str(regular_file)], ARGPARSE_USAGE_ERROR, "Repository path is not a directory"),
+        (["context", "--base-url", "http://api.codacy.test/api/v3"], 1, "must be an absolute HTTPS URL"),
+        (["context", "--base-url", credentialed_base_url], 1, "must not contain credentials"),
+        (["context", "--base-url", "https://api.codacy.test/api/v3?token=no"], 1, "query or fragment"),
+        (["context", "--token-env", "NOT-AN-ENV"], 1, "Invalid token environment variable name"),
+        (["context", "--repo", str(tmp_path), "--provider", "gh"], 1, "Repository identity is incomplete"),
+    ]
+
+    for arguments, expected_code, expected_message in cases:
+        result = run_python(str(CODACY_SCRIPT), *arguments)
+        assert result.returncode == expected_code
+        assert expected_message in result.stderr
+
+    no_slug = run_python(str(CODACY_SCRIPT), "context", "--repo", str(tmp_path), "--json")
+    assert no_slug.returncode == 0, no_slug.stderr
+    assert as_dict(json.loads(no_slug.stdout))["slug"] is None
+
+
+def test_codacy_request_rejects_malformed_and_conflicting_options(tmp_path: Path) -> None:
+    """Verify raw and OpenAPI requests fail closed on malformed or conflicting input."""
+    credentialed_spec_url = f"https://{'user'}:{'pass'}@api.codacy.test/api/api-docs/swagger.yaml"
+    spec = tmp_path / "codacy.yaml"
+    write_codacy_spec(spec)
+    cases = [
+        (["request", "relative", "--dry-run"], "Relative endpoint must start with"),
+        (["request", "--dry-run"], "Provide an endpoint or --operation-id"),
+        (
+            ["request", "/user", "--operation-id", "getRepositoryWithAnalysis", "--dry-run"],
+            "Provide either an endpoint or --operation-id",
+        ),
+        (["request", "/user", "--query", "broken", "--dry-run"], "non-empty name=value syntax"),
+        (
+            ["request", "/user", "--query", "limit=10", "--query", "limit=20", "--dry-run"],
+            "Duplicate query name",
+        ),
+        (["request", "/user", "--query", "limit=many", "--dry-run"], "limit must be an integer"),
+        (["request", "/user", "--query", "limit=1001", "--dry-run"], "limit must be between"),
+        (["request", "/user", "--body-json", "{", "--dry-run"], "Invalid JSON in --body-json"),
+        (["request", "/user", "--body-json", "{}", "--dry-run"], "GET requests must not include"),
+        (
+            ["request", "--spec-file", str(spec), "--operation-id", "missingOperation", "--dry-run"],
+            "operationId must resolve exactly once",
+        ),
+        (
+            [
+                "request",
+                "--spec-url",
+                credentialed_spec_url,
+                "--operation-id",
+                "missingOperation",
+                "--dry-run",
+            ],
+            "OpenAPI specification URL must not contain credentials",
+        ),
+        (
+            [
+                "request",
+                "--spec-file",
+                str(spec),
+                "--operation-id",
+                "searchRepositoryIssues",
+                "--method",
+                "GET",
+                "--dry-run",
+            ],
+            "conflicts with OpenAPI operation",
+        ),
+        (["request", "/user", "--timeout", "0", "--dry-run"], "--timeout must be greater than zero"),
+        (["request", "/user", "--max-pages", "0", "--dry-run"], "--max-pages must be at least one"),
+        (["request", "/user", "--retries", "-1", "--dry-run"], "--retries must be zero or greater"),
+        (["request", "/user", "--retry-delay", "-1", "--dry-run"], "--retry-delay must be zero or greater"),
+        (["request", "/user", "--send", "--dry-run"], "--send and --dry-run are mutually exclusive"),
+    ]
+
+    for arguments, expected_message in cases:
+        result = run_python(str(CODACY_SCRIPT), *arguments)
+        assert result.returncode == 1
+        assert expected_message in result.stderr

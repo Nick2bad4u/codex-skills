@@ -1,0 +1,11 @@
+# yaml-language-server: $schema=https://www.schemastore.org/codex-skill-metadata.json
+interface:
+    brand_color: "#5955D9"
+    default_prompt: "Use $codacy-management to inspect and manage this repository in Codacy safely."
+    display_name: "Codacy Management"
+    icon_large: "./assets/codacy-management.svg"
+    icon_small: "./assets/codacy-management-small.svg"
+    short_description: "Inspect and manage Codacy safely"
+
+policy:
+    allow_implicit_invocation: true

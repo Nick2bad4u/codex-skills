@@ -68,6 +68,16 @@ const skills = [
         shortTitle: "🛡️",
     },
     {
+        accent: "#5955D9",
+        displayName: "Codacy Management",
+        glyph: "M152 160h208M152 224h160M152 288h112M320 272l40 40 72-104M176 376h160",
+        longTitle: "Codacy Management",
+        name: "codacy-management",
+        prompt: "Use $codacy-management to inspect and manage this repository in Codacy safely.",
+        shortDescription: "Inspect and manage Codacy safely",
+        shortTitle: "COD",
+    },
+    {
         accent: "#0EA5E9",
         displayName: "Dependency Update Maintenance",
         glyph: "M144 168h160M304 136l48 32-48 32M368 232H208M208 200l-48 32 48 32M160 328h192M352 296l48 32-48 32",
