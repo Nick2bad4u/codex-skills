@@ -1,0 +1,11 @@
+# yaml-language-server: $schema=https://www.schemastore.org/codex-skill-metadata.json
+interface:
+    brand_color: "#F97316"
+    default_prompt: "Use $socket-management to inspect and manage Socket supply-chain security safely."
+    display_name: "Socket Management"
+    icon_large: "./assets/socket-management.svg"
+    icon_small: "./assets/socket-management-small.svg"
+    short_description: "Inspect and manage Socket safely"
+
+policy:
+    allow_implicit_invocation: true

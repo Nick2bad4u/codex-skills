@@ -1,0 +1,11 @@
+# yaml-language-server: $schema=https://www.schemastore.org/codex-skill-metadata.json
+interface:
+    brand_color: "#16A34A"
+    default_prompt: "Use $wakatime-management to inspect WakaTime activity, projects, goals, and exports safely."
+    display_name: "WakaTime Management"
+    icon_large: "./assets/wakatime-management.svg"
+    icon_small: "./assets/wakatime-management-small.svg"
+    short_description: "Inspect WakaTime activity safely"
+
+policy:
+    allow_implicit_invocation: true

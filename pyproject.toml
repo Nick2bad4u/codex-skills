@@ -10,6 +10,10 @@
         "skills/dependency-update-maintenance/scripts",
         "skills/python-strict-development/scripts",
         "skills/schemastore-pr-maintenance/scripts",
+        "skills/snyk-management/scripts",
+        "skills/socket-management/scripts",
+        "skills/stepsecurity-management/scripts",
+        "skills/wakatime-management/scripts",
         "skills/vsicons-association-recommender/scripts"
     ]
 

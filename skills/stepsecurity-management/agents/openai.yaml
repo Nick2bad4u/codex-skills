@@ -1,0 +1,11 @@
+# yaml-language-server: $schema=https://www.schemastore.org/codex-skill-metadata.json
+interface:
+    brand_color: "#7C3AED"
+    default_prompt: "Use $stepsecurity-management to investigate and manage StepSecurity Actions security safely."
+    display_name: "StepSecurity Management"
+    icon_large: "./assets/stepsecurity-management.svg"
+    icon_small: "./assets/stepsecurity-management-small.svg"
+    short_description: "Manage Actions runtime security"
+
+policy:
+    allow_implicit_invocation: true

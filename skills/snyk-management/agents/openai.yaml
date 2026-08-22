@@ -1,0 +1,11 @@
+# yaml-language-server: $schema=https://www.schemastore.org/codex-skill-metadata.json
+interface:
+    brand_color: "#4C3FB3"
+    default_prompt: "Use $snyk-management to inspect and manage Snyk projects, findings, and policy safely."
+    display_name: "Snyk Management"
+    icon_large: "./assets/snyk-management.svg"
+    icon_small: "./assets/snyk-management-small.svg"
+    short_description: "Inspect and manage Snyk safely"
+
+policy:
+    allow_implicit_invocation: true
