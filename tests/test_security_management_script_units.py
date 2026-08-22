@@ -379,18 +379,21 @@ def test_stepsecurity_url_body_redaction_and_links(tmp_path: Path) -> None:
     ):
         with pytest.raises(step_error):
             _ = validated_url(endpoint)
-    assert apply_query(validated_url("/detections"), {"limit": "10"}).endswith("?limit=10")
+    detections_url = validated_url("/detections")
+    assert apply_query(detections_url, {"limit": "10"}).endswith("?limit=10")
     with pytest.raises(step_error, match="Credential-like query"):
-        _ = apply_query(validated_url("/detections"), {"api_key": "bad"})
+        _ = apply_query(detections_url, {"api_key": "bad"})
 
     assert body_bytes(argparse.Namespace(body=None, body_file=None)) is None
     assert body_bytes(argparse.Namespace(body='{"ok":true}', body_file=None)) == b'{"ok":true}'
     body_file = tmp_path / "body.json"
     _ = body_file.write_text("{}", encoding="utf-8")
+    conflicting_body = argparse.Namespace(body="{}", body_file=str(body_file))
     with pytest.raises(step_error, match="either --body"):
-        _ = body_bytes(argparse.Namespace(body="{}", body_file=str(body_file)))
+        _ = body_bytes(conflicting_body)
+    invalid_body = argparse.Namespace(body="bad", body_file=None)
     with pytest.raises(step_error, match="Invalid inline JSON"):
-        _ = body_bytes(argparse.Namespace(body="bad", body_file=None))
+        _ = body_bytes(invalid_body)
     assert redact({"token": "x", "items": [{"ok": True}]}) == {
         "token": "<redacted>",
         "items": [{"ok": True}],

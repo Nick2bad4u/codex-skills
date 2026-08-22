@@ -24,11 +24,13 @@ if TYPE_CHECKING:
     from typing import IO
 
 BASE_URL = "https://agent.api.stepsecurity.io/v1"
+JSON_MEDIA_TYPE = "application/json"
 HTTP_METHODS = {"delete", "get", "patch", "post", "put"}
 READ_METHODS = {"GET", "HEAD", "OPTIONS"}
 RETRY_STATUSES = {429, 502, 503, 504}
+REDIRECT_STATUSES = {301, 302, 303, 307, 308}
 SENSITIVE_NAME = re.compile(r"(?:api[-_]?key|authorization|cookie|credential|password|secret|token)", re.IGNORECASE)
-OWNER_FROM_REMOTE = re.compile(r"(?:github\.com[:/])(?P<owner>[^/]+)/(?P<repo>[^/]+?)(?:\.git)?$", re.IGNORECASE)
+OWNER_FROM_REMOTE = re.compile(r"github\.com[:/](?P<owner>[^/]+)/(?P<repo>[^/]+?)(?:\.git)?$", re.IGNORECASE)
 CONTEXT_PATH_NAMES = {
     "organization": "org",
     "organisation": "org",
@@ -189,6 +191,16 @@ def json_object(value: object, label: str) -> dict[str, object]:
     return cast("dict[str, object]", value)
 
 
+def object_list(value: object) -> list[object] | None:
+    """Return a typed object list when the external value is a list."""
+    return cast("list[object]", value) if isinstance(value, list) else None
+
+
+def object_mapping(value: object) -> dict[object, object] | None:
+    """Return a typed object mapping when the external value is a mapping."""
+    return cast("dict[object, object]", value) if isinstance(value, dict) else None
+
+
 def load_json_file(path: str, label: str) -> object:
     """Read and parse a UTF-8 JSON file."""
     try:
@@ -212,15 +224,37 @@ def parameter_list(value: object) -> list[dict[str, object]]:
     """Normalize an OpenAPI parameter list and reject unresolved references."""
     if value is None:
         return []
-    if not isinstance(value, list):
+    items = object_list(value)
+    if items is None:
         raise StepSecurityError("OpenAPI parameters must be a list")
     result: list[dict[str, object]] = []
-    for item in cast("list[object]", value):
+    for item in items:
         parameter = json_object(item, "OpenAPI parameter")
         if "$ref" in parameter:
             raise StepSecurityError("Referenced OpenAPI parameters are not supported by this helper")
         result.append(parameter)
     return result
+
+
+def openapi_operation(path: str, method: str, value: object, inherited: list[dict[str, object]]) -> Operation | None:
+    """Normalize one callable operation while ignoring OpenAPI path metadata."""
+    if method.lower() not in HTTP_METHODS:
+        return None
+    operation = json_object(value, f"operation {method} {path}")
+    operation_id = operation.get("operationId")
+    if not isinstance(operation_id, str) or not operation_id:
+        return None
+    summary = operation.get("summary")
+    tags = object_list(operation.get("tags")) or []
+    return Operation(
+        operation_id=operation_id,
+        method=method.upper(),
+        path=path,
+        summary=summary if isinstance(summary, str) else "",
+        tags=[tag for tag in tags if isinstance(tag, str)],
+        parameters=inherited + parameter_list(operation.get("parameters")),
+        request_body_required=request_body_is_required(operation.get("requestBody")),
+    )
 
 
 def all_operations(specification: dict[str, object]) -> list[Operation]:
@@ -231,27 +265,9 @@ def all_operations(specification: dict[str, object]) -> list[Operation]:
         path_item = json_object(raw_path_item, f"path item {path}")
         inherited = parameter_list(path_item.get("parameters"))
         for method, raw_operation in path_item.items():
-            if method.lower() not in HTTP_METHODS:
-                continue
-            operation = json_object(raw_operation, f"operation {method} {path}")
-            operation_id = operation.get("operationId")
-            if not isinstance(operation_id, str) or not operation_id:
-                continue
-            summary = operation.get("summary")
-            tags = operation.get("tags")
-            operations.append(
-                Operation(
-                    operation_id=operation_id,
-                    method=method.upper(),
-                    path=path,
-                    summary=summary if isinstance(summary, str) else "",
-                    tags=[tag for tag in cast("list[object]", tags) if isinstance(tag, str)]
-                    if isinstance(tags, list)
-                    else [],
-                    parameters=inherited + parameter_list(operation.get("parameters")),
-                    request_body_required=request_body_is_required(operation.get("requestBody")),
-                )
-            )
+            operation = openapi_operation(path, method, raw_operation, inherited)
+            if operation is not None:
+                operations.append(operation)
     return sorted(operations, key=lambda item: (item.path, item.method))
 
 
@@ -302,7 +318,11 @@ def apply_context_paths(operation: Operation, path_values: dict[str, str], conte
     placeholders = set(re.findall(r"\{([^{}]+)\}", operation.path))
     for placeholder in placeholders - set(path_values):
         source = CONTEXT_PATH_NAMES.get(placeholder.lower())
-        inferred = context.organization if source == "org" else context.customer if source == "customer" else None
+        inferred: str | None = None
+        if source == "org":
+            inferred = context.organization
+        elif source == "customer":
+            inferred = context.customer
         if inferred:
             path_values[placeholder] = inferred
     return placeholders
@@ -420,13 +440,14 @@ def safe_headers(headers: dict[str, str]) -> dict[str, str]:
 
 def redact(value: object) -> object:
     """Recursively redact credential-like response fields."""
-    if isinstance(value, dict):
+    mapping = object_mapping(value)
+    if mapping is not None:
         return {
-            str(key): "<redacted>" if SENSITIVE_NAME.search(str(key)) else redact(item)
-            for key, item in cast("dict[object, object]", value).items()
+            str(key): "<redacted>" if SENSITIVE_NAME.search(str(key)) else redact(item) for key, item in mapping.items()
         }
-    if isinstance(value, list):
-        return [redact(item) for item in cast("list[object]", value)]
+    items = object_list(value)
+    if items is not None:
+        return [redact(item) for item in items]
     return value
 
 
@@ -439,6 +460,31 @@ def parse_response(data: bytes, content_type: str) -> object:
         except json.JSONDecodeError:
             pass
     return text[:100_000]
+
+
+def redirect_target(current_url: str, http_error: urllib.error.HTTPError) -> str | None:
+    """Return a validated redirect target or None for a non-redirect error."""
+    if http_error.code not in REDIRECT_STATUSES:
+        return None
+    location = http_error.headers.get("Location")
+    if not location:
+        raise StepSecurityError("Redirect response omitted Location") from http_error
+    return validated_url(urllib.parse.urljoin(current_url, location))
+
+
+def retry_delay(method: str, http_error: urllib.error.HTTPError, attempt: int, runtime: RequestRuntime) -> float | None:
+    """Return a bounded delay for a retryable read failure."""
+    if method not in READ_METHODS or http_error.code not in RETRY_STATUSES or attempt >= runtime.retries:
+        return None
+    retry_after = http_error.headers.get("Retry-After")
+    delay = float(retry_after) if retry_after and retry_after.isdigit() else 2**attempt
+    return min(delay, 30.0)
+
+
+def http_error_message(http_error: urllib.error.HTTPError) -> str:
+    """Build a bounded, redacted API error message."""
+    payload = parse_response(http_error.read(), http_error.headers.get("Content-Type", ""))
+    return f"HTTP {http_error.code}: {json.dumps(payload)}"
 
 
 def send(
@@ -468,20 +514,16 @@ def send(
                     parse_response(response.read(), response.headers.get("Content-Type", "")),
                 )
         except urllib.error.HTTPError as error:
-            if error.code in {301, 302, 303, 307, 308}:
-                location = error.headers.get("Location")
-                if not location:
-                    raise StepSecurityError("Redirect response omitted Location") from error
-                current_url = validated_url(urllib.parse.urljoin(current_url, location))
+            redirected = redirect_target(current_url, error)
+            if redirected is not None:
+                current_url = redirected
                 continue
-            if method in READ_METHODS and error.code in RETRY_STATUSES and attempt < runtime.retries:
-                retry_after = error.headers.get("Retry-After")
-                delay = float(retry_after) if retry_after and retry_after.isdigit() else 2**attempt
-                time.sleep(min(delay, 30.0))
+            delay = retry_delay(method, error, attempt, runtime)
+            if delay is not None:
+                time.sleep(delay)
                 attempt += 1
                 continue
-            payload = parse_response(error.read(), error.headers.get("Content-Type", ""))
-            raise StepSecurityError(f"HTTP {error.code}: {json.dumps(payload)}") from error
+            raise StepSecurityError(http_error_message(error)) from error
         except urllib.error.URLError as error:
             raise StepSecurityError(f"Request failed: {error.reason}") from error
 
@@ -512,13 +554,13 @@ def request_plan(arguments: argparse.Namespace) -> tuple[dict[str, object], byte
 
     url = apply_query(validated_url(endpoint), query_values)
     headers = {
-        "Accept": "application/json",
+        "Accept": JSON_MEDIA_TYPE,
         "Authorization": f"Bearer {credential()}",
         "User-Agent": "codex-stepsecurity-management/1",
         **extra_headers,
     }
     if body is not None:
-        headers["Content-Type"] = "application/json"
+        headers["Content-Type"] = JSON_MEDIA_TYPE
     plan: dict[str, object] = {
         "body": redact(json.loads(body)) if body is not None else None,
         "customer": context.customer,
@@ -533,16 +575,18 @@ def request_plan(arguments: argparse.Namespace) -> tuple[dict[str, object], byte
 
 def next_link(payload: object) -> str | None:
     """Extract a JSON:API-style next link."""
-    if not isinstance(payload, dict):
+    payload_mapping = object_mapping(payload)
+    if payload_mapping is None:
         return None
-    links = cast("dict[object, object]", payload).get("links")
-    if not isinstance(links, dict):
+    links = object_mapping(payload_mapping.get("links"))
+    if links is None:
         return None
-    candidate = cast("dict[object, object]", links).get("next")
+    candidate = links.get("next")
     if isinstance(candidate, str) and candidate:
         return candidate
-    if isinstance(candidate, dict):
-        href = cast("dict[object, object]", candidate).get("href")
+    candidate_mapping = object_mapping(candidate)
+    if candidate_mapping is not None:
+        href = candidate_mapping.get("href")
         return href if isinstance(href, str) and href else None
     return None
 
@@ -555,13 +599,13 @@ def execute_request(arguments: argparse.Namespace) -> None:
         emit({"executed": False, "request": plan})
         return
     headers = {
-        "Accept": "application/json",
+        "Accept": JSON_MEDIA_TYPE,
         "Authorization": f"Bearer {credential()}",
         "User-Agent": "codex-stepsecurity-management/1",
         **parse_pairs(arguments.header, "--header"),
     }
     if body is not None:
-        headers["Content-Type"] = "application/json"
+        headers["Content-Type"] = JSON_MEDIA_TYPE
 
     pages: list[dict[str, object]] = []
     url = cast("str", plan["url"])

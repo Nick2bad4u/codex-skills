@@ -47,8 +47,9 @@ HTTP_FOUND = 302
 HTTP_TOO_MANY_REQUESTS = 429
 HTTP_SERVICE_UNAVAILABLE = 503
 HTTP_GATEWAY_TIMEOUT = 504
+HTTP_SUCCESS_MIN = 200
+HTTP_SUCCESS_LIMIT = 300
 RETRYABLE_STATUS_CODES = frozenset({HTTP_FOUND, HTTP_TOO_MANY_REQUESTS, HTTP_SERVICE_UNAVAILABLE, HTTP_GATEWAY_TIMEOUT})
-ENVIRONMENT_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 SAFE_RANGE = re.compile(r"^[A-Za-z0-9_-]+$")
 SENSITIVE_KEY = re.compile(
     r"(?:^|[-_])(api[-_]?key|authorization|credential|password|secret|token)(?:$|[-_])",
@@ -124,7 +125,7 @@ def optional_text(value: object) -> str | None:
 
 def validate_environment_name(value: str) -> str:
     """Reject unsafe environment-variable names."""
-    if ENVIRONMENT_NAME.fullmatch(value) is None:
+    if not value.isascii() or not value.isidentifier():
         raise WakaTimeCliError(f"Invalid credential environment variable name: {value}")
     return value
 
@@ -384,7 +385,7 @@ def execute_plan(arguments: argparse.Namespace, context: WakaTimeContext, plan: 
     if not bool(arguments.json):
         _ = sys.stdout.write("[untrusted-wakatime-data]\n")
     write_json(output)
-    return 0
+    return 0 if HTTP_SUCCESS_MIN <= result.status < HTTP_SUCCESS_LIMIT else 1
 
 
 def handle_context(arguments: argparse.Namespace) -> int:

@@ -31,11 +31,13 @@ DEFAULT_TIMEOUT = 30.0
 DEFAULT_RETRIES = 2
 DEFAULT_MAX_PAGES = 100
 MAX_RESPONSE_TEXT = 2000
+JSON_MEDIA_TYPE = "application/json"
 HTTP_TOO_MANY_REQUESTS = 429
 HTTP_SERVICE_UNAVAILABLE = 503
 HTTP_GATEWAY_TIMEOUT = 504
+HTTP_SUCCESS_MIN = 200
+HTTP_SUCCESS_LIMIT = 300
 RETRYABLE_STATUS_CODES = frozenset({HTTP_TOO_MANY_REQUESTS, HTTP_SERVICE_UNAVAILABLE, HTTP_GATEWAY_TIMEOUT})
-ENVIRONMENT_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 PATH_PARAMETER = re.compile(r"\{([^{}]+)\}")
 SENSITIVE_KEY = re.compile(
     r"(?:^|[-_])(api[-_]?key|authorization|credential|password|secret|token)(?:$|[-_])",
@@ -125,6 +127,16 @@ def optional_text(value: object) -> str | None:
     return text or None
 
 
+def is_environment_name(value: str) -> bool:
+    """Return whether a name is a safe portable ASCII environment identifier."""
+    return value.isascii() and value.isidentifier()
+
+
+def as_string_list(value: object) -> list[str]:
+    """Narrow argparse append values after parser-controlled construction."""
+    return cast("list[str]", value)
+
+
 def resolve_repository(value: str) -> Path:
     """Resolve an existing repository directory from a CLI value."""
     try:
@@ -192,7 +204,7 @@ def resolve_token(token_envs: list[str]) -> tuple[str | None, str | None]:
     """Resolve the first non-empty token from safe environment names."""
     candidates = token_envs or list(DEFAULT_TOKEN_ENVS)
     for name in candidates:
-        if ENVIRONMENT_NAME.fullmatch(name) is None:
+        if not is_environment_name(name):
             raise SocketCliError(f"Invalid token environment variable name: {name}")
         token = os.environ.get(name, "").strip()
         if token:
@@ -209,7 +221,7 @@ def resolve_context(arguments: argparse.Namespace) -> SocketContext:
         detected = parse_github_remote(remote_url)
     organization = optional_text(arguments.org) or (detected.organization if detected else None)
     repository = optional_text(arguments.repository) or (detected.repository if detected else None)
-    token, token_env_name = resolve_token(cast("list[str]", arguments.token_envs))
+    token, token_env_name = resolve_token(as_string_list(arguments.token_envs))
     return SocketContext(
         base_url=sanitize_base_url(str(arguments.base_url)),
         organization=organization,
@@ -260,7 +272,7 @@ def load_openapi(arguments: argparse.Namespace, context: SocketContext) -> tuple
     try:
         spec_request = request.Request(  # noqa: S310  # validate_spec_url locks this to the Socket origin.
             spec_url,
-            headers={"Accept": "application/json"},
+            headers={"Accept": JSON_MEDIA_TYPE},
         )
         with opener.open(
             spec_request,
@@ -276,6 +288,25 @@ def load_openapi(arguments: argparse.Namespace, context: SocketContext) -> tuple
     return payload, spec_url
 
 
+def openapi_operation(path: str, method: str, value: JsonValue) -> OpenApiOperation | None:
+    """Normalize one documented operation, ignoring non-operation path fields."""
+    if not isinstance(value, dict):
+        return None
+    operation_id = value.get("operationId")
+    if not isinstance(operation_id, str) or not operation_id:
+        return None
+    summary_value = value.get("summary")
+    tags_value = value.get("tags")
+    return OpenApiOperation(
+        deprecated=value.get("deprecated") is True,
+        method=method.upper(),
+        operation_id=operation_id,
+        path=path,
+        summary=summary_value if isinstance(summary_value, str) else "",
+        tags=tuple(item for item in tags_value if isinstance(item, str)) if isinstance(tags_value, list) else (),
+    )
+
+
 def parse_operations(spec: dict[str, JsonValue]) -> list[OpenApiOperation]:
     """Extract useful operations from an OpenAPI JSON object."""
     paths = spec.get("paths")
@@ -286,26 +317,9 @@ def parse_operations(spec: dict[str, JsonValue]) -> list[OpenApiOperation]:
         if not isinstance(path_item, dict):
             continue
         for method in ("get", "post", "put", "patch", "delete"):
-            operation = path_item.get(method)
-            if not isinstance(operation, dict):
-                continue
-            operation_id = operation.get("operationId")
-            if not isinstance(operation_id, str) or not operation_id:
-                continue
-            summary_value = operation.get("summary")
-            summary = summary_value if isinstance(summary_value, str) else ""
-            tags_value = operation.get("tags")
-            tags = tuple(item for item in tags_value if isinstance(item, str)) if isinstance(tags_value, list) else ()
-            operations.append(
-                OpenApiOperation(
-                    deprecated=operation.get("deprecated") is True,
-                    method=method.upper(),
-                    operation_id=operation_id,
-                    path=path_name,
-                    summary=summary,
-                    tags=tags,
-                )
-            )
+            operation = openapi_operation(path_name, method, path_item.get(method))
+            if operation is not None:
+                operations.append(operation)
     return sorted(operations, key=lambda item: (item.path, item.method, item.operation_id))
 
 
@@ -407,8 +421,8 @@ def build_plan(arguments: argparse.Namespace, context: SocketContext) -> Request
         if method is not None and method.upper() != operation.method:
             raise SocketCliError("--method conflicts with the OpenAPI operation.")
         method = operation.method
-        endpoint = fill_path(operation.path, parse_pairs(cast("list[str]", arguments.path_values), label="path"))
-    elif cast("list[str]", arguments.path_values):
+        endpoint = fill_path(operation.path, parse_pairs(as_string_list(arguments.path_values), label="path"))
+    elif as_string_list(arguments.path_values):
         raise SocketCliError("--path requires --operation-id.")
     method = (method or "GET").upper()
     body = load_body(arguments)
@@ -419,7 +433,7 @@ def build_plan(arguments: argparse.Namespace, context: SocketContext) -> Request
         body=body,
         method=method,
         operation_id=operation_id,
-        query=parse_pairs(cast("list[str]", arguments.query), label="query"),
+        query=parse_pairs(as_string_list(arguments.query), label="query"),
         url=url,
     )
 
@@ -465,12 +479,12 @@ def send_request(
 ) -> ApiResult:
     """Send one authenticated request with bounded retry behavior."""
     url = encode_url(plan.url, query)
-    headers = {"Accept": "application/json", "User-Agent": "codex-socket-management/1"}
+    headers = {"Accept": JSON_MEDIA_TYPE, "User-Agent": "codex-socket-management/1"}
     if context.token is not None:
         headers["Authorization"] = f"Bearer {context.token}"
     body = None if plan.body is None else json.dumps(plan.body, separators=(",", ":")).encode()
     if body is not None:
-        headers["Content-Type"] = "application/json"
+        headers["Content-Type"] = JSON_MEDIA_TYPE
     opener = request.build_opener(NoRedirectHandler())
     retries = int(arguments.retries)
     for attempt in range(retries + 1):
@@ -610,7 +624,7 @@ def handle_request(arguments: argparse.Namespace) -> int:
     if not bool(arguments.json):
         _ = sys.stdout.write("[untrusted-socket-data]\n")
     write_json(output)
-    return 0
+    return 0 if HTTP_SUCCESS_MIN <= result.status < HTTP_SUCCESS_LIMIT else 1
 
 
 def common_parser() -> argparse.ArgumentParser:
