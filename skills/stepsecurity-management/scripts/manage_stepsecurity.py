@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Copyright (c) 2026 Nick2bad4u
 """Constrained StepSecurity REST inspection and request helper."""
 
 from __future__ import annotations

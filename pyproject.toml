@@ -1,21 +1,12 @@
 #:schema https://www.schemastore.org/pyproject.json
 
 [tool.coverage.run]
-    branch = true
+    branch           = true
     disable_warnings = [ "no-data-collected" ]
-    parallel = true
-    patch = [ "subprocess" ]
-    source = [
-        "skills/codacy-management/scripts",
-        "skills/dependency-update-maintenance/scripts",
-        "skills/python-strict-development/scripts",
-        "skills/schemastore-pr-maintenance/scripts",
-        "skills/snyk-management/scripts",
-        "skills/socket-management/scripts",
-        "skills/stepsecurity-management/scripts",
-        "skills/wakatime-management/scripts",
-        "skills/vsicons-association-recommender/scripts"
-    ]
+    include          = [ "skills/*/scripts/*.py" ]
+    parallel         = true
+    patch            = [ "subprocess" ]
+    relative_files   = true
 
 [tool.coverage.report]
     exclude_also = [ "if __name__ == .__main__.:", "if TYPE_CHECKING:" ]

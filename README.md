@@ -34,8 +34,19 @@ This installs all skills from this repo into the shared user skill location for 
 
 ```powershell
 npm run validate
+npm run test:skills
+npm run test:python
 npm run format:check
 npm run release:verify
 ```
+
+`npm run test:skills` runs an explicit contract for every skill. The matrix covers routing terms, core workflow
+sections, owned references and scripts, generated invocation metadata, parseable local icons, coverage registration,
+and executable helper entry points. Adding or removing a skill without updating its contract fails the suite.
+
+`npm run test:python` adds the deeper behavior and failure-path tests for every Python helper and enforces aggregate
+branch coverage. It also rejects Cobertura reports whose filenames cannot be mapped back to tracked helper files, so
+Codecov cannot silently accept an upload that it will later fail to process. Both layers run in CI through
+`npm run release:verify`.
 
 This repo is intentionally private/local-first for now. Individual skills can be promoted to standalone package repositories later if they prove stable enough to publish.

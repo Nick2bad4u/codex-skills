@@ -23,8 +23,3 @@ coverage:
                 if_ci_failed: "error"
                 target: "75%"
                 threshold: "1%"
-flags:
-    python:
-        paths:
-            - "skills/python-strict-development/scripts/"
-            - "skills/vsicons-association-recommender/scripts/"
