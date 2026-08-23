@@ -15,14 +15,23 @@ const implicitInvocationDisabledSkills = new Set([
  * @typedef {object} SkillDefinition
  *
  * @property {string} accent
- * @property {readonly string[]} [dependencies]
  * @property {string} displayName
  * @property {string} glyph
  * @property {string} longTitle
+ * @property {readonly McpDependency[]} [mcpDependencies]
  * @property {string} name
  * @property {string} prompt
  * @property {string} shortDescription
  * @property {string} shortTitle
+ */
+
+/**
+ * @typedef {object} McpDependency
+ *
+ * @property {string} description
+ * @property {string} endpoint
+ * @property {string} name
+ * @property {"streamable_http"} transport
  */
 
 /** @type {SkillDefinition[]} */
@@ -116,6 +125,16 @@ const skills = [
         prompt: "Use $github-actions-workflow-maintenance to create, review, or repair GitHub Actions workflows.",
         shortDescription: "Create, review, and repair workflows",
         shortTitle: "⚙️",
+    },
+    {
+        accent: "#246FDB",
+        displayName: "Google Tag Manager Management",
+        glyph: "M152 144h144l88 88-152 152-88-88zM216 208h8M312 304l48 48M168 392h176",
+        longTitle: "Google Tag Manager Management",
+        name: "google-tag-manager-management",
+        prompt: "Use $google-tag-manager-management to inspect and manage this Google Tag Manager container safely.",
+        shortDescription: "Manage GTM workspaces and publishing safely",
+        shortTitle: "GTM",
     },
     {
         accent: "#e2e616",
@@ -258,6 +277,25 @@ const skills = [
         shortTitle: "🧪",
     },
     {
+        accent: "#3BD671",
+        displayName: "UptimeRobot Management",
+        glyph: "M120 336h64l40-144 56 208 48-128h64M128 144h256v256H128z",
+        longTitle: "UptimeRobot Management",
+        mcpDependencies: [
+            {
+                description:
+                    "Official UptimeRobot remote MCP server with OAuth or API-key authentication",
+                endpoint: "https://mcp.uptimerobot.com/mcp",
+                name: "uptimerobot",
+                transport: "streamable_http",
+            },
+        ],
+        name: "uptimerobot-management",
+        prompt: "Use $uptimerobot-management to inspect and manage UptimeRobot monitors and incidents safely.",
+        shortDescription: "Manage monitors, incidents, and status pages",
+        shortTitle: "UR",
+    },
+    {
         accent: "#7C3AED",
         displayName: "Verify Oxlint Plugin Compatibility",
         glyph: "M128 152h256v208H128zM176 208h160M176 256h112M176 304h80M312 304l32 32 64-80",
@@ -327,15 +365,27 @@ function compactTitleFontSize(value, max, min) {
  * @returns {string}
  */
 function dependenciesYaml(skill) {
-    if (skill.dependencies === undefined || skill.dependencies.length === 0) {
+    if (
+        skill.mcpDependencies === undefined ||
+        skill.mcpDependencies.length === 0
+    ) {
         return "";
     }
 
-    const dependencies = skill.dependencies
-        .map((dependency) => `    - ${yamlString(dependency)}`)
+    const dependencies = skill.mcpDependencies
+        .map(
+            (
+                dependency
+            ) => `        - description: ${yamlString(dependency.description)}
+          transport: ${yamlString(dependency.transport)}
+          type: "mcp"
+          url: ${yamlString(dependency.endpoint)}
+          value: ${yamlString(dependency.name)}`
+        )
         .join("\n");
 
     return `dependencies:
+    tools:
 ${dependencies}`;
 }
 
@@ -603,20 +653,19 @@ function mixHex(from, to, amount) {
  * @returns {string}
  */
 function openaiYaml(skill) {
-    const optionalSections = [dependenciesYaml(skill), policyYaml(skill)]
-        .filter((section) => section.length > 0)
-        .join("\n\n");
-    const optionalYaml =
-        optionalSections.length > 0 ? `\n\n${optionalSections}` : "";
+    const dependencies = dependenciesYaml(skill);
+    const dependencyYaml = dependencies.length > 0 ? `${dependencies}\n\n` : "";
 
     return `${schemaComment}
-interface:
+${dependencyYaml}interface:
     brand_color: ${yamlString(skill.accent)}
     default_prompt: ${yamlString(skill.prompt)}
     display_name: ${yamlString(skill.displayName)}
     icon_large: ${yamlString(`./assets/${skill.name}.svg`)}
     icon_small: ${yamlString(`./assets/${skill.name}-small.svg`)}
-    short_description: ${yamlString(skill.shortDescription)}${optionalYaml}
+    short_description: ${yamlString(skill.shortDescription)}
+
+${policyYaml(skill)}
 `;
 }
 

@@ -29,11 +29,15 @@ IMPLICIT_INVOCATION_DISABLED = frozenset(
 SECRET_ENVIRONMENT_VARIABLES = (
     "CODACY_API_TOKEN",
     "CODACY_PROJECT_TOKEN",
+    "GOOGLE_TAG_MANAGER_ACCESS_TOKEN",
+    "GTM_ACCESS_TOKEN",
     "SNYK_TOKEN",
     "SOCKET_API_KEY",
     "SOCKET_SECURITY_API_KEY",
     "STEPSECURITY_API_TOKEN",
     "STEPSECURITY_TOKEN",
+    "UPTIMEROBOT_API_KEY",
+    "UPTIMEROBOT_READ_ONLY_API_KEY",
     "WAKATIME_API_KEY",
 )
 
@@ -97,6 +101,16 @@ SKILL_CONTRACTS: dict[str, SkillContract] = {
         resources=(
             "references/github-actions-best-practices.md",
             "references/review-checklist.md",
+        ),
+    ),
+    "google-tag-manager-management": SkillContract(
+        description_terms=("Google Tag Manager", "workspaces", "publishing"),
+        sections=("Select the surface", "Establish exact context", "Resolve, version, and publish", "Output contract"),
+        resources=(
+            "references/api-reference.md",
+            "references/command-guide.md",
+            "references/consent-and-publishing.md",
+            "scripts/manage_google_tag_manager.py",
         ),
     ),
     "lint-cleanup": SkillContract(
@@ -186,6 +200,15 @@ SKILL_CONTRACTS: dict[str, SkillContract] = {
     "test-quality-maintenance": SkillContract(
         description_terms=("tests", "coverage", "Playwright"),
         sections=("Inputs", "Outputs", "Shared Workflow", "Error Handling", "Reporting"),
+    ),
+    "uptimerobot-management": SkillContract(
+        description_terms=("UptimeRobot", "monitors", "MCP"),
+        sections=("Choose the interface", "Establish context", "Apply safe mutations", "Output contract"),
+        resources=(
+            "references/api-reference.md",
+            "references/command-guide.md",
+            "scripts/manage_uptimerobot.py",
+        ),
     ),
     "verify-oxlint-plugin-compatibility": SkillContract(
         description_terms=("Oxlint", "ESLint plugin", "compatibility"),
@@ -377,6 +400,16 @@ def test_every_helper_is_registered_for_coverage() -> None:
         assert any(script_relative_to_repo.match(pattern) for pattern in include_patterns), (
             f"Coverage include patterns do not match {script_relative_to_repo}."
         )
+
+
+def test_uptimerobot_metadata_declares_official_mcp_dependency() -> None:
+    """Keep the official remote MCP dependency machine-discoverable and exact."""
+    metadata = (SKILLS_ROOT / "uptimerobot-management" / "agents" / "openai.yaml").read_text(encoding="utf-8")
+
+    assert 'type: "mcp"' in metadata
+    assert 'value: "uptimerobot"' in metadata
+    assert 'transport: "streamable_http"' in metadata
+    assert 'url: "https://mcp.uptimerobot.com/mcp"' in metadata
 
 
 @pytest.mark.parametrize(("skill_name", "relative_script"), HELPER_CASES, ids=HELPER_IDS)

@@ -338,6 +338,9 @@ pip-selfcheck.json
 # Local History for Visual Studio Code
 .history/
 
+# Local skillcheck regression history
+.skillcheck-history.json
+
 # Built Visual Studio Code Extensions
 *.vsix
 

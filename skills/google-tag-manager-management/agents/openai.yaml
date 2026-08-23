@@ -1,0 +1,11 @@
+# yaml-language-server: $schema=https://www.schemastore.org/codex-skill-metadata.json
+interface:
+    brand_color: "#246FDB"
+    default_prompt: "Use $google-tag-manager-management to inspect and manage this Google Tag Manager container safely."
+    display_name: "Google Tag Manager Management"
+    icon_large: "./assets/google-tag-manager-management.svg"
+    icon_small: "./assets/google-tag-manager-management-small.svg"
+    short_description: "Manage GTM workspaces and publishing safely"
+
+policy:
+    allow_implicit_invocation: true

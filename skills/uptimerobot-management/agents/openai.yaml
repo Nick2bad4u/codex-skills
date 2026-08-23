@@ -1,0 +1,19 @@
+# yaml-language-server: $schema=https://www.schemastore.org/codex-skill-metadata.json
+dependencies:
+    tools:
+        - description: "Official UptimeRobot remote MCP server with OAuth or API-key authentication"
+          transport: "streamable_http"
+          type: "mcp"
+          url: "https://mcp.uptimerobot.com/mcp"
+          value: "uptimerobot"
+
+interface:
+    brand_color: "#3BD671"
+    default_prompt: "Use $uptimerobot-management to inspect and manage UptimeRobot monitors and incidents safely."
+    display_name: "UptimeRobot Management"
+    icon_large: "./assets/uptimerobot-management.svg"
+    icon_small: "./assets/uptimerobot-management-small.svg"
+    short_description: "Manage monitors, incidents, and status pages"
+
+policy:
+    allow_implicit_invocation: true
