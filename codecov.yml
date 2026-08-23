@@ -1,4 +1,5 @@
 codecov:
+    max_report_age: false # Codecov misclassifies coverage.py millisecond timestamps as expired.
     require_ci_to_pass: true
 
 comment:
