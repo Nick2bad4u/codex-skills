@@ -21,8 +21,11 @@ if TYPE_CHECKING:
 
 type JsonValue = bool | int | float | str | list[JsonValue] | dict[str, JsonValue] | None
 
-DEFAULT_BASE_URL = "https://tagmanager.googleapis.com/tagmanager/v2"
-DEFAULT_DISCOVERY_URL = "https://tagmanager.googleapis.com/$discovery/rest?version=v2"
+API_ORIGIN = "https://tagmanager.googleapis.com"
+API_HOST = "tagmanager.googleapis.com"
+API_BASE_PATH = "/tagmanager/v2"
+DEFAULT_BASE_URL = f"{API_ORIGIN}{API_BASE_PATH}"
+DEFAULT_DISCOVERY_URL = f"{API_ORIGIN}/$discovery/rest?version=v2"
 DEFAULT_TOKEN_ENVS = ("GOOGLE_TAG_MANAGER_ACCESS_TOKEN", "GTM_ACCESS_TOKEN")
 DEFAULT_TIMEOUT = 30.0
 DEFAULT_RETRIES = 2
@@ -30,6 +33,7 @@ DEFAULT_MAX_PAGES = 25
 MAX_MAX_PAGES = 500
 MAX_RESPONSE_TEXT = 2000
 JSON_MEDIA_TYPE = "application/json"
+REDACTED_VALUE = "<redacted>"
 HTTP_SUCCESS_MIN = 200
 HTTP_SUCCESS_LIMIT = 300
 RETRYABLE_STATUS_CODES = frozenset({429, 500, 502, 503, 504})
@@ -37,21 +41,18 @@ SAFE_METHODS = frozenset({"GET", "HEAD"})
 HTTP_METHODS = ("GET", "POST", "PUT", "PATCH", "DELETE")
 GLOBAL_QUERY_PARAMETERS = frozenset({"alt", "fields", "prettyPrint", "quotaUser"})
 PATH_PARAMETER = re.compile(r"\{(\+?)([^{}]+)\}")
-SENSITIVE_KEY = re.compile(
-    r"""
-    access[-_]?token
-    | api[-_]?key
-    | authorization
-    | client[-_]?secret
-    | credential
-    | oauth[-_]?token
-    | password
-    | private[-_]?key
-    | refresh[-_]?token
-    | secret
-    | token
-    """,
-    re.IGNORECASE | re.VERBOSE,
+SENSITIVE_KEY_MARKERS = (
+    "accesstoken",
+    "apikey",
+    "authorization",
+    "clientsecret",
+    "credential",
+    "oauthtoken",
+    "password",
+    "privatekey",
+    "refreshtoken",
+    "secret",
+    "token",
 )
 
 
@@ -132,6 +133,19 @@ class RequestPlan:
 
 
 @dataclass(frozen=True)
+class ResolvedRequestTarget:
+    """Endpoint, scope, pagination, and risk metadata for one request."""
+
+    confirmation_value: str | None
+    endpoint: str
+    high_risk: bool
+    method: str
+    operation_id: str | None
+    required_scopes: tuple[str, ...]
+    supports_page_token: bool
+
+
+@dataclass(frozen=True)
 class ApiResult:
     """One Tag Manager API response page."""
 
@@ -146,6 +160,12 @@ def optional_text(value: object) -> str | None:
         return None
     text = str(value).strip()
     return text or None
+
+
+def is_sensitive_key(value: str) -> bool:
+    """Recognize credential-like field names without a backtracking regex."""
+    normalized = value.casefold().replace("-", "").replace("_", "")
+    return any(marker in normalized for marker in SENSITIVE_KEY_MARKERS)
 
 
 def as_string_list(value: object) -> list[str]:
@@ -184,21 +204,21 @@ def resolve_credential(names: list[str]) -> Credential | None:
 def sanitize_base_url(value: str) -> str:
     """Lock OAuth-authenticated requests to the production v2 service path."""
     parsed = parse.urlsplit(value.strip().rstrip("/"))
-    if parsed.scheme.lower() != "https" or parsed.hostname != "tagmanager.googleapis.com":
+    if parsed.scheme.lower() != "https" or parsed.hostname != API_HOST:
         raise GoogleTagManagerCliError("API base URL must use the production Tag Manager Google API origin.")
     if parsed.username is not None or parsed.password is not None or parsed.port is not None:
         raise GoogleTagManagerCliError("API base URL must not contain credentials or an explicit port.")
     if parsed.query or parsed.fragment:
         raise GoogleTagManagerCliError("API base URL must not contain a query or fragment.")
-    if parsed.path.rstrip("/") != "/tagmanager/v2":
-        raise GoogleTagManagerCliError("API base URL must end with /tagmanager/v2.")
+    if parsed.path.rstrip("/") != API_BASE_PATH:
+        raise GoogleTagManagerCliError(f"API base URL must end with {API_BASE_PATH}.")
     return DEFAULT_BASE_URL
 
 
 def validate_discovery_url(value: str) -> str:
     """Lock contract discovery to Google's Tag Manager v2 document."""
     parsed = parse.urlsplit(value.strip())
-    if parsed.scheme.lower() != "https" or parsed.hostname != "tagmanager.googleapis.com":
+    if parsed.scheme.lower() != "https" or parsed.hostname != API_HOST:
         raise GoogleTagManagerCliError("Discovery URL must use the production Tag Manager Google API origin.")
     if parsed.username is not None or parsed.password is not None or parsed.port is not None:
         raise GoogleTagManagerCliError("Discovery URL must not contain credentials or an explicit port.")
@@ -357,7 +377,7 @@ def parse_pairs(values: list[str], *, label: str) -> dict[str, str]:
             raise GoogleTagManagerCliError(f"{label} values must use non-empty name=value syntax.")
         if name in result:
             raise GoogleTagManagerCliError(f"Duplicate {label} name: {name}")
-        if label == "query" and SENSITIVE_KEY.search(name):
+        if label == "query" and is_sensitive_key(name):
             raise GoogleTagManagerCliError(f"Refusing credential-like query parameter: {name}")
         result[name] = item_value
     return result
@@ -408,7 +428,7 @@ def fill_path(path_template: str, values: dict[str, str]) -> str:
 def assert_safe_api_url(base_url: str, candidate: str, *, allow_query: bool) -> str:
     """Validate exact origin, service path, traversal, and query safety."""
     parsed = parse.urlsplit(candidate)
-    if parsed.scheme.lower() != "https" or parsed.hostname != "tagmanager.googleapis.com":
+    if parsed.scheme.lower() != "https" or parsed.hostname != API_HOST:
         raise GoogleTagManagerCliError("Endpoint origin must match the production Tag Manager API.")
     if parsed.username is not None or parsed.password is not None or parsed.port is not None:
         raise GoogleTagManagerCliError("Endpoint must not contain credentials or an explicit port.")
@@ -417,11 +437,11 @@ def assert_safe_api_url(base_url: str, candidate: str, *, allow_query: bool) -> 
         raise GoogleTagManagerCliError("Endpoint must not contain path traversal.")
     base_path = parse.urlsplit(base_url).path.rstrip("/")
     if parsed.path != base_path and not parsed.path.startswith(f"{base_path}/"):
-        raise GoogleTagManagerCliError("Endpoint must remain under the /tagmanager/v2 service path.")
+        raise GoogleTagManagerCliError(f"Endpoint must remain under the {API_BASE_PATH} service path.")
     if parsed.fragment or (parsed.query and not allow_query):
         raise GoogleTagManagerCliError("Endpoint must not contain a query or fragment; use --query.")
     for name, _ in parse.parse_qsl(parsed.query, keep_blank_values=True):
-        if SENSITIVE_KEY.search(name):
+        if is_sensitive_key(name):
             raise GoogleTagManagerCliError(f"Refusing credential-like query parameter: {name}")
     return candidate
 
@@ -434,10 +454,11 @@ def validated_endpoint_url(base_url: str, endpoint: str) -> str:
     parsed_value = parse.urlsplit(value)
     if parsed_value.query or parsed_value.fragment:
         raise GoogleTagManagerCliError("Endpoint must not contain a query or fragment; use --query.")
-    if value.startswith("tagmanager/v2/") or value == "tagmanager/v2":
-        candidate = f"https://tagmanager.googleapis.com/{value}"
-    elif value.startswith("/tagmanager/v2"):
-        candidate = f"https://tagmanager.googleapis.com{value}"
+    relative_base_path = API_BASE_PATH.removeprefix("/")
+    if value.startswith(f"{relative_base_path}/") or value == relative_base_path:
+        candidate = f"{API_ORIGIN}/{value}"
+    elif value.startswith(API_BASE_PATH):
+        candidate = f"{API_ORIGIN}{value}"
     elif value.startswith("/"):
         candidate = f"{base_url}{value}"
     elif parsed_value.scheme:
@@ -467,63 +488,88 @@ def operation_is_high_risk(operation: DiscoveryOperation) -> bool:
 
 def raw_confirmation_value(method: str, url: str) -> str:
     """Build the exact confirmation phrase for a raw high-risk request."""
-    path = parse.urlsplit(url).path.removeprefix("/tagmanager/v2") or "/"
+    path = parse.urlsplit(url).path.removeprefix(API_BASE_PATH) or "/"
     return f"{method} {path}"
 
 
-def build_plan(arguments: argparse.Namespace, context: GoogleTagManagerContext) -> RequestPlan:
-    """Build a raw or Discovery-operation request plan."""
+def validate_operation_body(operation: DiscoveryOperation, body: JsonValue) -> None:
+    """Require a body exactly when the Discovery method declares one."""
+    if operation.has_request_body and body is None:
+        raise GoogleTagManagerCliError("Discovery operation requires a JSON request body.")
+    if not operation.has_request_body and body is not None:
+        raise GoogleTagManagerCliError("Discovery operation does not accept a JSON request body.")
+
+
+def resolve_request_target(
+    arguments: argparse.Namespace,
+    context: GoogleTagManagerContext,
+    query: dict[str, str],
+    body: JsonValue,
+) -> ResolvedRequestTarget:
+    """Resolve raw or Discovery-operation inputs before URL validation."""
     endpoint = optional_text(arguments.endpoint)
     operation_id = optional_text(arguments.operation_id)
     if endpoint is not None and operation_id is not None:
         raise GoogleTagManagerCliError("Provide either an endpoint or --operation-id, not both.")
     if endpoint is None and operation_id is None:
         raise GoogleTagManagerCliError("Provide an endpoint or --operation-id.")
-    method = optional_text(arguments.method)
+
+    requested_method = optional_text(arguments.method)
+    path_values = as_string_list(arguments.path_values)
+    if operation_id is None:
+        if path_values:
+            raise GoogleTagManagerCliError("--path requires --operation-id.")
+        return ResolvedRequestTarget(
+            confirmation_value=None,
+            endpoint=cast("str", endpoint),
+            high_risk=False,
+            method=(requested_method or "GET").upper(),
+            operation_id=None,
+            required_scopes=(),
+            supports_page_token=True,
+        )
+
+    operation = operation_by_id(load_operations(arguments, context), operation_id)
+    if requested_method is not None and requested_method.upper() != operation.method:
+        raise GoogleTagManagerCliError("--method conflicts with the Discovery operation.")
+    validate_operation_query(operation, query)
+    validate_operation_body(operation, body)
+    high_risk = operation_is_high_risk(operation)
+    return ResolvedRequestTarget(
+        confirmation_value=operation.operation_id if high_risk else None,
+        endpoint=fill_path(operation.path, parse_pairs(path_values, label="path")),
+        high_risk=high_risk,
+        method=operation.method,
+        operation_id=operation_id,
+        required_scopes=operation.scopes,
+        supports_page_token=any(item.location == "query" and item.name == "pageToken" for item in operation.parameters),
+    )
+
+
+def build_plan(arguments: argparse.Namespace, context: GoogleTagManagerContext) -> RequestPlan:
+    """Build a raw or Discovery-operation request plan."""
     query = parse_pairs(as_string_list(arguments.query), label="query")
     body = load_body(arguments)
-    required_scopes: tuple[str, ...] = ()
-    supports_page_token = True
-    high_risk = False
-    confirmation_value: str | None = None
-    if operation_id is not None:
-        operation = operation_by_id(load_operations(arguments, context), operation_id)
-        if method is not None and method.upper() != operation.method:
-            raise GoogleTagManagerCliError("--method conflicts with the Discovery operation.")
-        method = operation.method
-        path_values = parse_pairs(as_string_list(arguments.path_values), label="path")
-        endpoint = fill_path(operation.path, path_values)
-        validate_operation_query(operation, query)
-        if operation.has_request_body and body is None:
-            raise GoogleTagManagerCliError("Discovery operation requires a JSON request body.")
-        if not operation.has_request_body and body is not None:
-            raise GoogleTagManagerCliError("Discovery operation does not accept a JSON request body.")
-        required_scopes = operation.scopes
-        supports_page_token = any(
-            item.location == "query" and item.name == "pageToken" for item in operation.parameters
-        )
-        high_risk = operation_is_high_risk(operation)
-        confirmation_value = operation.operation_id if high_risk else None
-    elif as_string_list(arguments.path_values):
-        raise GoogleTagManagerCliError("--path requires --operation-id.")
-    method = (method or "GET").upper()
-    if method in SAFE_METHODS and body is not None:
-        raise GoogleTagManagerCliError(f"{method} requests must not include a body.")
-    url = validated_endpoint_url(context.base_url, cast("str", endpoint))
-    if operation_id is None:
+    target = resolve_request_target(arguments, context, query, body)
+    if target.method in SAFE_METHODS and body is not None:
+        raise GoogleTagManagerCliError(f"{target.method} requests must not include a body.")
+    url = validated_endpoint_url(context.base_url, target.endpoint)
+    high_risk = target.high_risk
+    confirmation_value = target.confirmation_value
+    if target.operation_id is None:
         raw_path = parse.urlsplit(url).path.casefold()
-        high_risk = method == "DELETE" or ":publish" in raw_path or ":create_version" in raw_path
+        high_risk = target.method == "DELETE" or ":publish" in raw_path or ":create_version" in raw_path
         high_risk = high_risk or "/user_permissions" in raw_path
-        confirmation_value = raw_confirmation_value(method, url) if high_risk else None
+        confirmation_value = raw_confirmation_value(target.method, url) if high_risk else None
     return RequestPlan(
         body=body,
         confirmation_value=confirmation_value,
         high_risk=high_risk,
-        method=method,
-        operation_id=operation_id,
+        method=target.method,
+        operation_id=target.operation_id,
         query=query,
-        required_scopes=required_scopes,
-        supports_page_token=supports_page_token,
+        required_scopes=target.required_scopes,
+        supports_page_token=target.supports_page_token,
         url=url,
     )
 
@@ -538,15 +584,15 @@ def redact_url_secrets(value: str) -> str:
     if parsed.scheme.lower() not in {"http", "https"} or parsed.hostname is None:
         return value
     pairs = parse.parse_qsl(parsed.query, keep_blank_values=True)
-    has_sensitive_query = any(SENSITIVE_KEY.search(name) for name, _ in pairs)
+    has_sensitive_query = any(is_sensitive_key(name) for name, _ in pairs)
     has_userinfo = parsed.username is not None or parsed.password is not None
     if not has_sensitive_query and not has_userinfo:
         return value
     host = f"[{parsed.hostname}]" if ":" in parsed.hostname else parsed.hostname
     if port is not None:
         host = f"{host}:{port}"
-    netloc = f"<redacted>@{host}" if has_userinfo else parsed.netloc
-    redacted_pairs = [(name, "<redacted>" if SENSITIVE_KEY.search(name) else item_value) for name, item_value in pairs]
+    netloc = f"{REDACTED_VALUE}@{host}" if has_userinfo else parsed.netloc
+    redacted_pairs = [(name, REDACTED_VALUE if is_sensitive_key(name) else item_value) for name, item_value in pairs]
     query = parse.urlencode(redacted_pairs, doseq=True, safe="<>")
     return parse.urlunsplit((parsed.scheme, netloc, parsed.path, query, parsed.fragment))
 
@@ -555,13 +601,13 @@ def redact_json(value: JsonValue, secret: str | None = None) -> JsonValue:
     """Recursively redact credential-like fields and reflected token values."""
     if isinstance(value, dict):
         return {
-            key: "<redacted>" if SENSITIVE_KEY.search(key) else redact_json(item, secret) for key, item in value.items()
+            key: REDACTED_VALUE if is_sensitive_key(key) else redact_json(item, secret) for key, item in value.items()
         }
     if isinstance(value, list):
         return [redact_json(item, secret) for item in value]
     if isinstance(value, str):
         result = redact_url_secrets(value)
-        return result.replace(secret, "<redacted>") if secret else result
+        return result.replace(secret, REDACTED_VALUE) if secret else result
     return value
 
 
@@ -658,47 +704,45 @@ def preview_payload(plan: RequestPlan, context: GoogleTagManagerContext, url: st
     }
 
 
-def execute_plan(arguments: argparse.Namespace, context: GoogleTagManagerContext, plan: RequestPlan) -> int:
-    """Preview or execute one guarded request, optionally traversing pages."""
-    is_safe = plan.method in SAFE_METHODS
+def validate_execution_mode(arguments: argparse.Namespace, plan: RequestPlan, *, is_safe: bool) -> None:
+    """Reject execution switches that conflict with request safety or metadata."""
     if bool(arguments.send) and is_safe:
         raise GoogleTagManagerCliError("--send is only valid for mutating requests; reads execute without it.")
     if bool(arguments.paginate) and not is_safe:
         raise GoogleTagManagerCliError("--paginate is only valid for safe read requests.")
     if bool(arguments.paginate) and plan.operation_id is not None and not plan.supports_page_token:
         raise GoogleTagManagerCliError("Discovery operation does not support pageToken pagination.")
-    initial_url = encode_url(plan.url, plan.query)
-    preview = bool(arguments.dry_run) or (not is_safe and not bool(arguments.send))
-    if preview:
-        write_json(preview_payload(plan, context, initial_url))
-        return 0
+
+
+def require_credential(context: GoogleTagManagerContext) -> Credential:
+    """Require a configured access token before network access."""
     if context.credential is None:
         raise GoogleTagManagerCliError("No OAuth access token is configured for this request.")
-    if plan.high_risk and optional_text(arguments.confirm) != plan.confirmation_value:
-        raise GoogleTagManagerCliError(f"High-impact request requires --confirm {plan.confirmation_value!r}.")
-    if not bool(arguments.paginate):
-        result = send_request(plan, initial_url, context.credential, arguments)
-        write_json(
-            {
-                "data": redact_json(result.payload, context.credential.value),
-                "status": result.status,
-                "url": result.url,
-            }
-        )
-        return 0
+    return context.credential
+
+
+def result_payload(result: ApiResult, credential: Credential) -> dict[str, JsonValue]:
+    """Build one redacted API response object."""
+    return {
+        "data": redact_json(result.payload, credential.value),
+        "status": result.status,
+        "url": result.url,
+    }
+
+
+def write_paginated_results(
+    arguments: argparse.Namespace,
+    plan: RequestPlan,
+    credential: Credential,
+) -> None:
+    """Execute and write bounded page-token pagination for a safe request."""
     pages: list[JsonValue] = []
     query = dict(plan.query)
     pending_token: str | None = None
     for _ in range(int(arguments.max_pages)):
         current_url = encode_url(plan.url, query)
-        result = send_request(plan, current_url, context.credential, arguments)
-        pages.append(
-            {
-                "data": redact_json(result.payload, context.credential.value),
-                "status": result.status,
-                "url": result.url,
-            }
-        )
+        result = send_request(plan, current_url, credential, arguments)
+        pages.append(result_payload(result, credential))
         pending_token = next_page_token(result.payload)
         if pending_token is None:
             break
@@ -711,7 +755,25 @@ def execute_plan(arguments: argparse.Namespace, context: GoogleTagManagerContext
             "pages": pages,
         }
     )
-    return 0
+
+
+def execute_plan(arguments: argparse.Namespace, context: GoogleTagManagerContext, plan: RequestPlan) -> None:
+    """Preview or execute one guarded request, optionally traversing pages."""
+    is_safe = plan.method in SAFE_METHODS
+    validate_execution_mode(arguments, plan, is_safe=is_safe)
+    initial_url = encode_url(plan.url, plan.query)
+    preview = bool(arguments.dry_run) or (not is_safe and not bool(arguments.send))
+    if preview:
+        write_json(preview_payload(plan, context, initial_url))
+        return
+
+    credential = require_credential(context)
+    if plan.high_risk and optional_text(arguments.confirm) != plan.confirmation_value:
+        raise GoogleTagManagerCliError(f"High-impact request requires --confirm {plan.confirmation_value!r}.")
+    if bool(arguments.paginate):
+        write_paginated_results(arguments, plan, credential)
+        return
+    write_json(result_payload(send_request(plan, initial_url, credential, arguments), credential))
 
 
 def handle_operations(arguments: argparse.Namespace, context: GoogleTagManagerContext) -> int:
@@ -804,7 +866,8 @@ def dispatch_command(arguments: argparse.Namespace, context: GoogleTagManagerCon
     if arguments.command == "operations":
         return handle_operations(arguments, context)
     if arguments.command == "request":
-        return execute_plan(arguments, context, build_plan(arguments, context))
+        execute_plan(arguments, context, build_plan(arguments, context))
+        return 0
     raise GoogleTagManagerCliError(f"Unsupported command: {arguments.command}")
 
 

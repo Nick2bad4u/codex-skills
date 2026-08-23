@@ -199,8 +199,9 @@ def test_uptimerobot_body_response_and_argument_bounds(tmp_path: Path) -> None:
     _ = body_file.write_text('{"ok":true}', encoding="utf-8")
     assert load_body(argparse.Namespace(body_json=None, body_file=body_file)) == {"ok": True}
     assert load_body(argparse.Namespace(body_json="[1,2]", body_file=None)) == [1, 2]
+    invalid_body_arguments = argparse.Namespace(body_json="bad", body_file=None)
     with pytest.raises(helper_error, match="valid JSON"):
-        _ = load_body(argparse.Namespace(body_json="bad", body_file=None))
+        _ = load_body(invalid_body_arguments)
     assert response_payload(b'{"ok":true}', "application/json") == {"ok": True}
     assert response_payload(b"plain", "text/plain") == "plain"
     assert response_payload(b"", "application/json") is None
@@ -343,7 +344,7 @@ def test_uptimerobot_execute_pagination_and_missing_credentials(
     plan_type = cast("Callable[..., RequestPlanView]", function(UPTIMEROBOT, "RequestPlan"))
     result_type = cast("Callable[..., object]", function(UPTIMEROBOT, "ApiResult"))
     execute = cast(
-        "Callable[[argparse.Namespace, object, RequestPlanView], int]",
+        "Callable[[argparse.Namespace, object, RequestPlanView], None]",
         function(UPTIMEROBOT, "execute_plan"),
     )
     credential = credential_type(environment="TEST_READ", value="credential")
@@ -382,7 +383,7 @@ def test_uptimerobot_execute_pagination_and_missing_credentials(
 
     monkeypatch.setattr(UPTIMEROBOT, "send_request", fake_send)
     arguments = argparse.Namespace(send=False, dry_run=False, paginate=True, max_pages=5, confirm=None)
-    assert execute(arguments, context, plan) == 0
+    assert execute(arguments, context, plan) is None
     output = json_from_capture(capsys)
     assert output["complete"] is True
     assert output["pageCount"] == EXPECTED_PAGE_COUNT
@@ -393,8 +394,9 @@ def test_uptimerobot_execute_pagination_and_missing_credentials(
         read_credential=None,
         spec_url="https://cdn.uptimerobot.com/api/openapi.yaml",
     )
+    read_arguments = argparse.Namespace(send=False, dry_run=False, paginate=False, confirm=None)
     with pytest.raises(helper_error, match="No read-only or main credential"):
-        _ = execute(argparse.Namespace(send=False, dry_run=False, paginate=False, confirm=None), no_auth, plan)
+        _ = execute(read_arguments, no_auth, plan)
 
     delete_plan = plan_type(
         body=None,
@@ -405,17 +407,15 @@ def test_uptimerobot_execute_pagination_and_missing_credentials(
         query={},
         url="https://api.uptimerobot.com/v3/monitors/42",
     )
+    delete_arguments = argparse.Namespace(send=True, dry_run=False, paginate=False, confirm=None)
+    delete_context = context_type(
+        base_url="https://api.uptimerobot.com/v3",
+        main_credential=credential,
+        read_credential=None,
+        spec_url="https://cdn.uptimerobot.com/api/openapi.yaml",
+    )
     with pytest.raises(helper_error, match="requires --confirm"):
-        _ = execute(
-            argparse.Namespace(send=True, dry_run=False, paginate=False, confirm=None),
-            context_type(
-                base_url="https://api.uptimerobot.com/v3",
-                main_credential=credential,
-                read_credential=None,
-                spec_url="https://cdn.uptimerobot.com/api/openapi.yaml",
-            ),
-            delete_plan,
-        )
+        _ = execute(delete_arguments, delete_context, delete_plan)
     main_context = context_type(
         base_url="https://api.uptimerobot.com/v3",
         main_credential=credential,
@@ -437,7 +437,7 @@ def test_uptimerobot_execute_pagination_and_missing_credentials(
             main_context,
             delete_plan,
         )
-        == 0
+        is None
     )
     assert json_from_capture(capsys)["status"] == HTTP_OK
 
@@ -461,7 +461,7 @@ def test_gtm_execute_pagination_and_confirmation(
     plan_type = cast("Callable[..., RequestPlanView]", function(GTM, "RequestPlan"))
     result_type = cast("Callable[..., object]", function(GTM, "ApiResult"))
     execute = cast(
-        "Callable[[argparse.Namespace, object, RequestPlanView], int]",
+        "Callable[[argparse.Namespace, object, RequestPlanView], None]",
         function(GTM, "execute_plan"),
     )
     credential = credential_type(environment="TEST_GTM", value="credential")
@@ -498,7 +498,7 @@ def test_gtm_execute_pagination_and_confirmation(
             context,
             read_plan,
         )
-        == 0
+        is None
     )
     output = json_from_capture(capsys)
     assert output["complete"] is True
@@ -515,9 +515,6 @@ def test_gtm_execute_pagination_and_confirmation(
         supports_page_token=False,
         url="https://tagmanager.googleapis.com/tagmanager/v2/accounts/1/containers/2/versions/3:publish",
     )
+    publish_arguments = argparse.Namespace(send=True, dry_run=False, paginate=False, confirm=None)
     with pytest.raises(helper_error, match="requires --confirm"):
-        _ = execute(
-            argparse.Namespace(send=True, dry_run=False, paginate=False, confirm=None),
-            context,
-            publish_plan,
-        )
+        _ = execute(publish_arguments, context, publish_plan)

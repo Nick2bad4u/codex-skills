@@ -33,25 +33,24 @@ MAX_MAX_PAGES = 500
 MAX_RESPONSE_TEXT = 2000
 MIN_QUOTED_SCALAR_LENGTH = 2
 JSON_MEDIA_TYPE = "application/json"
+REDACTED_VALUE = "<redacted>"
 HTTP_SUCCESS_MIN = 200
 HTTP_SUCCESS_LIMIT = 300
 RETRYABLE_STATUS_CODES = frozenset({429, 500, 502, 503, 504})
 SAFE_METHODS = frozenset({"GET", "HEAD"})
 HTTP_METHODS = ("GET", "POST", "PUT", "PATCH", "DELETE")
+YAML_HTTP_METHODS = frozenset(item.lower() for item in HTTP_METHODS)
 PATH_PARAMETER = re.compile(r"\{([^{}]+)\}")
-SENSITIVE_KEY = re.compile(
-    r"""
-    api[-_]?key
-    | authorization
-    | credential
-    | custom[-_]?http[-_]?headers
-    | http[-_]?password
-    | password
-    | post[-_]?value[-_]?data
-    | secret
-    | token
-    """,
-    re.IGNORECASE | re.VERBOSE,
+SENSITIVE_KEY_MARKERS = (
+    "apikey",
+    "authorization",
+    "credential",
+    "customhttpheaders",
+    "httppassword",
+    "password",
+    "postvaluedata",
+    "secret",
+    "token",
 )
 
 
@@ -121,6 +120,17 @@ class RequestPlan:
 
 
 @dataclass(frozen=True)
+class ResolvedRequestTarget:
+    """Endpoint and risk metadata resolved from raw or OpenAPI inputs."""
+
+    confirmation_value: str | None
+    endpoint: str
+    high_risk: bool
+    method: str
+    operation_id: str | None
+
+
+@dataclass(frozen=True)
 class ApiResult:
     """One API response page."""
 
@@ -170,6 +180,12 @@ def optional_text(value: object) -> str | None:
         return None
     text = str(value).strip()
     return text or None
+
+
+def is_sensitive_key(value: str) -> bool:
+    """Recognize credential-like field names without a backtracking regex."""
+    normalized = value.casefold().replace("-", "").replace("_", "")
+    return any(marker in normalized for marker in SENSITIVE_KEY_MARKERS)
 
 
 def as_string_list(value: object) -> list[str]:
@@ -316,12 +332,23 @@ def append_yaml_operation(operations: list[OpenApiOperation], state: YamlOperati
         operations.append(operation)
 
 
+def yaml_mapping_entry(line: str, *, indent: int) -> tuple[str, str] | None:
+    """Parse one exactly indented simple YAML mapping entry."""
+    prefix = " " * indent
+    if not line.startswith(prefix) or line.startswith(f"{prefix} "):
+        return None
+    field_name, separator, value = line[indent:].partition(":")
+    if not separator or not field_name or not field_name[0].isalpha() or not field_name.isalnum():
+        return None
+    return field_name, value.strip()
+
+
 def apply_yaml_operation_field(state: YamlOperationState, line: str) -> bool:
     """Apply one operation-level YAML field and report whether it matched."""
-    field_match = re.fullmatch(r"      ([A-Za-z][A-Za-z0-9]*):\s*(.*)", line)
-    if field_match is None:
+    field = yaml_mapping_entry(line, indent=6)
+    if field is None:
         return False
-    field_name, value = field_match.groups()
+    field_name, value = field
     state.reading_tags = field_name == "tags"
     if field_name == "operationId":
         state.operation_id = strip_yaml_scalar(value)
@@ -334,15 +361,25 @@ def apply_yaml_operation_field(state: YamlOperationState, line: str) -> bool:
 
 def apply_yaml_tag(state: YamlOperationState, line: str) -> None:
     """Append a simple list-form tag when currently inside the tags field."""
-    tag_match = re.fullmatch(r"        -\s+(.+)", line)
-    if state.reading_tags and tag_match:
-        state.tags.append(strip_yaml_scalar(tag_match.group(1)))
+    tag_prefix = "        -"
+    if not state.reading_tags or not line.startswith(tag_prefix):
+        return
+    value = line[len(tag_prefix) :].strip()
+    if value:
+        state.tags.append(strip_yaml_scalar(value))
 
 
-def parse_yaml_operations(text: str) -> list[OpenApiOperation]:
-    """Extract operation metadata from the official consistently indented YAML."""
-    operations: list[OpenApiOperation] = []
-    state = YamlOperationState()
+def yaml_path_key(line: str) -> str | None:
+    """Return an exactly two-space-indented OpenAPI path key."""
+    if not line.startswith("  /"):
+        return None
+    content = line[2:].rstrip()
+    return content[:-1] if content.endswith(":") else None
+
+
+def openapi_path_lines(text: str) -> list[str]:
+    """Return lines within the top-level paths mapping."""
+    lines: list[str] = []
     in_paths = False
     for raw_line in text.splitlines():
         line = raw_line.rstrip()
@@ -351,21 +388,33 @@ def parse_yaml_operations(text: str) -> list[OpenApiOperation]:
             continue
         if line and not line.startswith((" ", "#")):
             break
-        path_match = re.fullmatch(r"  (/.+):\s*", line)
-        if path_match:
+        lines.append(line)
+    if not in_paths:
+        raise UptimeRobotCliError("OpenAPI YAML document does not contain a paths mapping.")
+    return lines
+
+
+def parse_yaml_operations(text: str) -> list[OpenApiOperation]:
+    """Extract operation metadata from the official consistently indented YAML."""
+    operations: list[OpenApiOperation] = []
+    state = YamlOperationState()
+    for line in openapi_path_lines(text):
+        path_name = yaml_path_key(line)
+        if path_name is not None:
             append_yaml_operation(operations, state)
-            state.path = path_match.group(1)
+            state.path = path_name
             state.reset_operation()
             continue
-        method_match = re.fullmatch(r"    (get|post|put|patch|delete):\s*", line)
-        if method_match and state.path is not None:
+        method_entry = yaml_mapping_entry(line, indent=4)
+        method = method_entry[0] if method_entry is not None and not method_entry[1] else None
+        if method in YAML_HTTP_METHODS and state.path is not None:
             append_yaml_operation(operations, state)
-            state.reset_operation(method_match.group(1).upper())
+            state.reset_operation(method.upper())
             continue
         if state.method is not None and not apply_yaml_operation_field(state, line):
             apply_yaml_tag(state, line)
     append_yaml_operation(operations, state)
-    if not in_paths or not operations:
+    if not operations:
         raise UptimeRobotCliError("Could not discover operations in the OpenAPI YAML document.")
     return operations
 
@@ -422,7 +471,7 @@ def parse_pairs(values: list[str], *, label: str) -> dict[str, str]:
             raise UptimeRobotCliError(f"{label} values must use non-empty name=value syntax.")
         if name in result:
             raise UptimeRobotCliError(f"Duplicate {label} name: {name}")
-        if label == "query" and SENSITIVE_KEY.search(name):
+        if label == "query" and is_sensitive_key(name):
             raise UptimeRobotCliError(f"Refusing credential-like query parameter: {name}")
         result[name] = item_value
     return result
@@ -484,7 +533,7 @@ def assert_safe_api_url(base_url: str, candidate: str, *, allow_query: bool) -> 
     if parsed.fragment or (parsed.query and not allow_query):
         raise UptimeRobotCliError("Endpoint must not contain a query or fragment; use --query.")
     for name, _ in parse.parse_qsl(parsed.query, keep_blank_values=True):
-        if SENSITIVE_KEY.search(name):
+        if is_sensitive_key(name):
             raise UptimeRobotCliError(f"Refusing credential-like query parameter: {name}")
     return candidate
 
@@ -518,42 +567,60 @@ def raw_confirmation_value(method: str, url: str) -> str:
     return f"{method} {path}"
 
 
-def build_plan(arguments: argparse.Namespace, context: UptimeRobotContext) -> RequestPlan:
-    """Build a raw or operation-based request plan."""
+def resolve_request_target(arguments: argparse.Namespace, context: UptimeRobotContext) -> ResolvedRequestTarget:
+    """Resolve raw or operation-based target inputs before body processing."""
     endpoint = optional_text(arguments.endpoint)
     operation_id = optional_text(arguments.operation_id)
     if endpoint is not None and operation_id is not None:
         raise UptimeRobotCliError("Provide either an endpoint or --operation-id, not both.")
     if endpoint is None and operation_id is None:
         raise UptimeRobotCliError("Provide an endpoint or --operation-id.")
-    method = optional_text(arguments.method)
-    high_risk = False
-    confirmation_value: str | None = None
-    if operation_id is not None:
-        operation = operation_by_id(load_operations(arguments, context), operation_id)
-        if method is not None and method.upper() != operation.method:
-            raise UptimeRobotCliError("--method conflicts with the OpenAPI operation.")
-        method = operation.method
-        endpoint = fill_path(operation.path, parse_pairs(as_string_list(arguments.path_values), label="path"))
-        high_risk = operation_is_high_risk(operation)
-        confirmation_value = operation.operation_id if high_risk else None
-    elif as_string_list(arguments.path_values):
-        raise UptimeRobotCliError("--path requires --operation-id.")
-    method = (method or "GET").upper()
-    body = load_body(arguments)
-    if method in SAFE_METHODS and body is not None:
-        raise UptimeRobotCliError(f"{method} requests must not include a body.")
-    url = validated_endpoint_url(context.base_url, cast("str", endpoint))
+
+    requested_method = optional_text(arguments.method)
+    path_values = as_string_list(arguments.path_values)
     if operation_id is None:
+        if path_values:
+            raise UptimeRobotCliError("--path requires --operation-id.")
+        return ResolvedRequestTarget(
+            confirmation_value=None,
+            endpoint=cast("str", endpoint),
+            high_risk=False,
+            method=(requested_method or "GET").upper(),
+            operation_id=None,
+        )
+
+    operation = operation_by_id(load_operations(arguments, context), operation_id)
+    if requested_method is not None and requested_method.upper() != operation.method:
+        raise UptimeRobotCliError("--method conflicts with the OpenAPI operation.")
+    high_risk = operation_is_high_risk(operation)
+    return ResolvedRequestTarget(
+        confirmation_value=operation.operation_id if high_risk else None,
+        endpoint=fill_path(operation.path, parse_pairs(path_values, label="path")),
+        high_risk=high_risk,
+        method=operation.method,
+        operation_id=operation_id,
+    )
+
+
+def build_plan(arguments: argparse.Namespace, context: UptimeRobotContext) -> RequestPlan:
+    """Build a raw or operation-based request plan."""
+    target = resolve_request_target(arguments, context)
+    body = load_body(arguments)
+    if target.method in SAFE_METHODS and body is not None:
+        raise UptimeRobotCliError(f"{target.method} requests must not include a body.")
+    url = validated_endpoint_url(context.base_url, target.endpoint)
+    high_risk = target.high_risk
+    confirmation_value = target.confirmation_value
+    if target.operation_id is None:
         raw_path = parse.urlsplit(url).path.casefold()
-        high_risk = method == "DELETE" or "/monitors/bulk/" in raw_path
-        confirmation_value = raw_confirmation_value(method, url) if high_risk else None
+        high_risk = target.method == "DELETE" or "/monitors/bulk/" in raw_path
+        confirmation_value = raw_confirmation_value(target.method, url) if high_risk else None
     return RequestPlan(
         body=body,
         confirmation_value=confirmation_value,
         high_risk=high_risk,
-        method=method,
-        operation_id=operation_id,
+        method=target.method,
+        operation_id=target.operation_id,
         query=parse_pairs(as_string_list(arguments.query), label="query"),
         url=url,
     )
@@ -569,15 +636,15 @@ def redact_url_secrets(value: str) -> str:
     if parsed.scheme.lower() not in {"http", "https"} or parsed.hostname is None:
         return value
     pairs = parse.parse_qsl(parsed.query, keep_blank_values=True)
-    has_sensitive_query = any(SENSITIVE_KEY.search(name) for name, _ in pairs)
+    has_sensitive_query = any(is_sensitive_key(name) for name, _ in pairs)
     has_userinfo = parsed.username is not None or parsed.password is not None
     if not has_sensitive_query and not has_userinfo:
         return value
     host = f"[{parsed.hostname}]" if ":" in parsed.hostname else parsed.hostname
     if port is not None:
         host = f"{host}:{port}"
-    netloc = f"<redacted>@{host}" if has_userinfo else parsed.netloc
-    redacted_pairs = [(name, "<redacted>" if SENSITIVE_KEY.search(name) else item_value) for name, item_value in pairs]
+    netloc = f"{REDACTED_VALUE}@{host}" if has_userinfo else parsed.netloc
+    redacted_pairs = [(name, REDACTED_VALUE if is_sensitive_key(name) else item_value) for name, item_value in pairs]
     query = parse.urlencode(redacted_pairs, doseq=True, safe="<>")
     return parse.urlunsplit((parsed.scheme, netloc, parsed.path, query, parsed.fragment))
 
@@ -586,8 +653,7 @@ def redact_json(value: JsonValue, secrets: tuple[str, ...] = ()) -> JsonValue:
     """Recursively redact credential-like fields and reflected credential values."""
     if isinstance(value, dict):
         return {
-            key: "<redacted>" if SENSITIVE_KEY.search(key) else redact_json(item, secrets)
-            for key, item in value.items()
+            key: REDACTED_VALUE if is_sensitive_key(key) else redact_json(item, secrets) for key, item in value.items()
         }
     if isinstance(value, list):
         return [redact_json(item, secrets) for item in value]
@@ -595,7 +661,7 @@ def redact_json(value: JsonValue, secrets: tuple[str, ...] = ()) -> JsonValue:
         result = redact_url_secrets(value)
         for secret in secrets:
             if secret:
-                result = result.replace(secret, "<redacted>")
+                result = result.replace(secret, REDACTED_VALUE)
         return result
     return value
 
@@ -700,60 +766,71 @@ def next_link(payload: JsonValue) -> str | None:
     return value if isinstance(value, str) and value.strip() else None
 
 
-def execute_plan(arguments: argparse.Namespace, context: UptimeRobotContext, plan: RequestPlan) -> int:
-    """Preview a write/read or execute a credentialed request."""
-    is_safe = plan.method in SAFE_METHODS
+def validate_execution_mode(arguments: argparse.Namespace, *, is_safe: bool) -> None:
+    """Reject execution switches that conflict with request safety."""
     if bool(arguments.send) and is_safe:
         raise UptimeRobotCliError("--send is only valid for mutating requests; reads execute without it.")
     if bool(arguments.paginate) and not is_safe:
         raise UptimeRobotCliError("--paginate is only valid for safe read requests.")
-    preview = bool(arguments.dry_run) or (not is_safe and not bool(arguments.send))
-    initial_url = encode_url(plan.url, plan.query)
+
+
+def request_secrets(context: UptimeRobotContext) -> tuple[str, ...]:
+    """Return configured secret values for reflected-response redaction."""
+    return tuple(item.value for item in (context.read_credential, context.main_credential) if item is not None)
+
+
+def write_preview(context: UptimeRobotContext, plan: RequestPlan, initial_url: str, secrets: tuple[str, ...]) -> None:
+    """Write a deterministic, credential-safe request preview."""
     credential = credential_for(context, plan.method)
-    secrets = tuple(item.value for item in (context.read_credential, context.main_credential) if item is not None)
-    if preview:
-        write_json(
-            {
-                "confirmationRequired": plan.high_risk,
-                "confirmationValue": plan.confirmation_value,
-                "credentialEnvironment": credential.environment if credential else None,
-                "dryRun": True,
-                "request": {
-                    "body": redact_json(plan.body, secrets),
-                    "method": plan.method,
-                    "operationId": plan.operation_id,
-                    "url": initial_url,
-                },
-            }
-        )
-        return 0
+    write_json(
+        {
+            "confirmationRequired": plan.high_risk,
+            "confirmationValue": plan.confirmation_value,
+            "credentialEnvironment": credential.environment if credential else None,
+            "dryRun": True,
+            "request": {
+                "body": redact_json(plan.body, secrets),
+                "method": plan.method,
+                "operationId": plan.operation_id,
+                "url": initial_url,
+            },
+        }
+    )
+
+
+def require_credential(context: UptimeRobotContext, plan: RequestPlan, *, is_safe: bool) -> Credential:
+    """Resolve the least-privileged credential or fail before network access."""
+    credential = credential_for(context, plan.method)
     if credential is None:
         role = "read-only or main" if is_safe else "main"
         raise UptimeRobotCliError(f"No {role} credential is configured for this request.")
-    if plan.high_risk and optional_text(arguments.confirm) != plan.confirmation_value:
-        raise UptimeRobotCliError(f"High-impact request requires --confirm {plan.confirmation_value!r}.")
-    if not bool(arguments.paginate):
-        result = send_request(plan, initial_url, credential, arguments)
-        write_json(
-            {
-                "data": redact_json(result.payload, secrets),
-                "status": result.status,
-                "url": result.url,
-            }
-        )
-        return 0
+    return credential
+
+
+def result_payload(result: ApiResult, secrets: tuple[str, ...]) -> dict[str, JsonValue]:
+    """Build one redacted API response object."""
+    return {
+        "data": redact_json(result.payload, secrets),
+        "status": result.status,
+        "url": result.url,
+    }
+
+
+def write_paginated_results(
+    arguments: argparse.Namespace,
+    context: UptimeRobotContext,
+    plan: RequestPlan,
+    credential: Credential,
+    initial_url: str,
+) -> None:
+    """Execute and write bounded cursor pagination for a safe request."""
     pages: list[JsonValue] = []
     current_url = initial_url
     pending_link: str | None = None
+    secrets = request_secrets(context)
     for _ in range(int(arguments.max_pages)):
         result = send_request(plan, current_url, credential, arguments)
-        pages.append(
-            {
-                "data": redact_json(result.payload, secrets),
-                "status": result.status,
-                "url": result.url,
-            }
-        )
+        pages.append(result_payload(result, secrets))
         pending_link = next_link(result.payload)
         if pending_link is None:
             break
@@ -766,7 +843,31 @@ def execute_plan(arguments: argparse.Namespace, context: UptimeRobotContext, pla
             "pages": pages,
         }
     )
-    return 0
+
+
+def execute_plan(arguments: argparse.Namespace, context: UptimeRobotContext, plan: RequestPlan) -> None:
+    """Preview a write/read or execute a credentialed request."""
+    is_safe = plan.method in SAFE_METHODS
+    validate_execution_mode(arguments, is_safe=is_safe)
+    preview = bool(arguments.dry_run) or (not is_safe and not bool(arguments.send))
+    initial_url = encode_url(plan.url, plan.query)
+    secrets = request_secrets(context)
+    if preview:
+        write_preview(context, plan, initial_url, secrets)
+        return
+
+    credential = require_credential(context, plan, is_safe=is_safe)
+    if plan.high_risk and optional_text(arguments.confirm) != plan.confirmation_value:
+        raise UptimeRobotCliError(f"High-impact request requires --confirm {plan.confirmation_value!r}.")
+    if bool(arguments.paginate):
+        write_paginated_results(arguments, context, plan, credential, initial_url)
+        return
+    write_json(
+        result_payload(
+            send_request(plan, initial_url, credential, arguments),
+            secrets,
+        )
+    )
 
 
 def handle_operations(arguments: argparse.Namespace, context: UptimeRobotContext) -> int:
@@ -868,7 +969,8 @@ def dispatch_command(arguments: argparse.Namespace, context: UptimeRobotContext)
     if arguments.command == "operations":
         return handle_operations(arguments, context)
     if arguments.command == "request":
-        return execute_plan(arguments, context, build_plan(arguments, context))
+        execute_plan(arguments, context, build_plan(arguments, context))
+        return 0
     raise UptimeRobotCliError(f"Unsupported command: {arguments.command}")
 
 
