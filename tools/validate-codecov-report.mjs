@@ -2,14 +2,12 @@ import { readdir, readFile } from "node:fs/promises";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 
-const reportPath = process.argv[2];
-
-if (typeof reportPath !== "string" || reportPath.length === 0) {
-    throw new Error(
-        "Usage: node tools/validate-codecov-report.mjs <coverage.xml>"
-    );
-}
-
+const reportDisplayPath = "coverage/python/coverage.xml";
+const reportPath = fileURLToPath(
+    new URL("../coverage/python/coverage.xml", import.meta.url)
+);
+const repositoryRoot = fileURLToPath(new URL("../", import.meta.url));
+const skillsRoot = fileURLToPath(new URL("../skills/", import.meta.url));
 const report = await readFile(reportPath, "utf8");
 const filenamePattern = /filename="(?<filename>[^"]+)"/v;
 const reportedFiles = new Set(
@@ -37,12 +35,10 @@ const reportedFiles = new Set(
 
 if (reportedFiles.size === 0) {
     throw new Error(
-        `Coverage report contains no class filenames: ${reportPath}`
+        `Coverage report contains no class filenames: ${reportDisplayPath}`
     );
 }
 
-const repositoryRoot = fileURLToPath(new URL("../", import.meta.url));
-const skillsRoot = fileURLToPath(new URL("../skills/", import.meta.url));
 const skillEntries = await readdir(skillsRoot, {
     recursive: true,
     withFileTypes: true,
@@ -101,5 +97,5 @@ if (missingHelpers.length > 0) {
 }
 
 console.log(
-    `Validated ${reportedFiles.size} repository-relative Codecov file paths in ${reportPath}.`
+    `Validated ${reportedFiles.size} repository-relative Codecov file paths in ${reportDisplayPath}.`
 );
