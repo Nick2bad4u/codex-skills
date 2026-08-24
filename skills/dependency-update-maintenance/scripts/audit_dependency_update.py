@@ -134,7 +134,7 @@ def git_changed_files(repo: Path) -> list[str]:
         diff_files = run_git(repo, ["diff", "--name-only", "--diff-filter=ACMRTUXB", "--"])
 
     status_files: list[str] = []
-    for line in run_git(repo, ["status", "--porcelain=v1"]):
+    for line in run_git(repo, ["status", "--porcelain=v1", "--untracked-files=all"]):
         status_path = line[3:]
         if " -> " in status_path:
             status_path = status_path.split(" -> ", maxsplit=1)[1]

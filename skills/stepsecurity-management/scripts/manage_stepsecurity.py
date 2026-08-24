@@ -439,28 +439,47 @@ def safe_headers(headers: dict[str, str]) -> dict[str, str]:
     return {name: "<redacted>" if SENSITIVE_NAME.search(name) else value for name, value in headers.items()}
 
 
-def redact(value: object) -> object:
-    """Recursively redact credential-like response fields."""
+def redact(value: object, sensitive_values: tuple[str, ...] = ()) -> object:
+    """Recursively redact credential-like fields and known request secrets."""
     mapping = object_mapping(value)
     if mapping is not None:
         return {
-            str(key): "<redacted>" if SENSITIVE_NAME.search(str(key)) else redact(item) for key, item in mapping.items()
+            str(key): "<redacted>" if SENSITIVE_NAME.search(str(key)) else redact(item, sensitive_values)
+            for key, item in mapping.items()
         }
     items = object_list(value)
     if items is not None:
-        return [redact(item) for item in items]
+        return [redact(item, sensitive_values) for item in items]
+    if isinstance(value, str):
+        redacted = value
+        for sensitive_value in sensitive_values:
+            redacted = redacted.replace(sensitive_value, "<redacted>")
+        return redacted
     return value
 
 
-def parse_response(data: bytes, content_type: str) -> object:
+def sensitive_header_values(headers: dict[str, str]) -> tuple[str, ...]:
+    """Return sensitive header values and scheme-stripped credentials."""
+    values: set[str] = set()
+    for name, value in headers.items():
+        if not SENSITIVE_NAME.search(name) or not value:
+            continue
+        values.add(value)
+        _scheme, separator, credential_value = value.partition(" ")
+        if separator and credential_value:
+            values.add(credential_value)
+    return tuple(sorted(values, key=len, reverse=True))
+
+
+def parse_response(data: bytes, content_type: str, sensitive_values: tuple[str, ...] = ()) -> object:
     """Decode JSON when possible and bounded text otherwise."""
     text = data.decode("utf-8", errors="replace")
     if "json" in content_type.lower() or text.lstrip().startswith(("{", "[")):
         try:
-            return redact(cast("object", json.loads(text)))
+            return redact(cast("object", json.loads(text)), sensitive_values)
         except json.JSONDecodeError:
             pass
-    return text[:100_000]
+    return redact(text[:100_000], sensitive_values)
 
 
 def redirect_target(current_url: str, http_error: urllib.error.HTTPError) -> str | None:
@@ -482,9 +501,9 @@ def retry_delay(method: str, http_error: urllib.error.HTTPError, attempt: int, r
     return min(delay, 30.0)
 
 
-def http_error_message(http_error: urllib.error.HTTPError) -> str:
+def http_error_message(http_error: urllib.error.HTTPError, sensitive_values: tuple[str, ...]) -> str:
     """Build a bounded, redacted API error message."""
-    payload = parse_response(http_error.read(), http_error.headers.get("Content-Type", ""))
+    payload = parse_response(http_error.read(), http_error.headers.get("Content-Type", ""), sensitive_values)
     return f"HTTP {http_error.code}: {json.dumps(payload)}"
 
 
@@ -499,6 +518,7 @@ def send(
     opener = urllib.request.build_opener(NoRedirect())
     attempt = 0
     current_url = validated_url(url)
+    sensitive_values = sensitive_header_values(headers)
     while True:
         request = urllib.request.Request(  # noqa: S310  # validated_url origin-locks current_url.
             current_url,
@@ -512,19 +532,22 @@ def send(
                 return (
                     response.status,
                     response_headers,
-                    parse_response(response.read(), response.headers.get("Content-Type", "")),
+                    parse_response(response.read(), response.headers.get("Content-Type", ""), sensitive_values),
                 )
         except urllib.error.HTTPError as error:
-            redirected = redirect_target(current_url, error)
-            if redirected is not None:
-                current_url = redirected
-                continue
-            delay = retry_delay(method, error, attempt, runtime)
-            if delay is not None:
-                time.sleep(delay)
-                attempt += 1
-                continue
-            raise StepSecurityError(http_error_message(error)) from error
+            try:
+                redirected = redirect_target(current_url, error)
+                if redirected is not None:
+                    current_url = redirected
+                    continue
+                delay = retry_delay(method, error, attempt, runtime)
+                if delay is not None:
+                    time.sleep(delay)
+                    attempt += 1
+                    continue
+                raise StepSecurityError(http_error_message(error, sensitive_values)) from error
+            finally:
+                error.close()
         except urllib.error.URLError as error:
             raise StepSecurityError(f"Request failed: {error.reason}") from error
 

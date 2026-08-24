@@ -251,6 +251,45 @@ def test_audit_schemastore_pr_reports_missing_readiness(tmp_path: Path) -> None:
     assert "Local schema changes are missing positive tests." in result.stdout
 
 
+def test_audit_schemastore_pr_discovers_untracked_git_surfaces(tmp_path: Path) -> None:
+    """Discover untracked schema, catalog, config, and test files without explicit path arguments."""
+    initialized = run_python(
+        "-c",
+        "import subprocess,sys; subprocess.run(['git','init',sys.argv[1]],check=True)",
+        str(tmp_path),
+    )
+    assert initialized.returncode == 0, initialized.stderr
+
+    schema_root = tmp_path / "src" / "schemas" / "json"
+    catalog_root = tmp_path / "src" / "api" / "json"
+    test_root = tmp_path / "src" / "test" / "discovered"
+    negative_root = tmp_path / "src" / "negative_test" / "discovered"
+    for directory in (schema_root, catalog_root, test_root, negative_root):
+        directory.mkdir(parents=True)
+    _ = (schema_root / "discovered.json").write_text("{}", encoding="utf-8")
+    _ = (test_root / "valid.json").write_text("{}", encoding="utf-8")
+    _ = (negative_root / "invalid.json").write_text("{}", encoding="utf-8")
+    _ = (catalog_root / "catalog.json").write_text('{"schemas":[]}', encoding="utf-8")
+    _ = (tmp_path / "src" / "schema-validation.jsonc").write_text(
+        '{"skip":["discovered.json"]}',
+        encoding="utf-8",
+    )
+
+    result = run_python(str(SCHEMASTORE_AUDIT_SCRIPT), str(tmp_path), "--json")
+
+    assert result.returncode == 0, result.stderr
+    audit = as_dict(json.loads(result.stdout))
+    assert audit["local_schemas"] == ["discovered.json"]
+    assert audit["positive_test_schemas"] == ["discovered.json"]
+    assert audit["negative_test_schemas"] == ["discovered.json"]
+    assert audit["missing_positive_tests"] == []
+    assert audit["missing_catalog_entries"] == []
+    assert audit["catalog_changed"] is True
+    assert audit["schema_validation_changed"] is True
+    assert "schema-validation.jsonc changed: explain every exception in the PR." in as_list(audit["warnings"])
+    assert "node ./cli.js coverage" in as_list(audit["suggested_commands"])
+
+
 def test_audit_dependency_update_reports_python_and_workflows(tmp_path: Path) -> None:
     """Verify the dependency update audit reports Python and workflow validation hints."""
     workflow_root = tmp_path / ".github" / "workflows"
@@ -321,6 +360,30 @@ def test_audit_dependency_update_reports_multiple_ecosystems(tmp_path: Path) -> 
     assert "pnpm install --frozen-lockfile" in as_list(audit["install_commands"])
     assert "go test ./..." in as_list(audit["validation_commands"])
     assert "cargo update" in as_list(audit["update_commands"])
+
+
+def test_audit_dependency_update_discovers_untracked_nested_surfaces(tmp_path: Path) -> None:
+    """Discover untracked dependency manifests and workflow files without explicit path arguments."""
+    initialized = run_python(
+        "-c",
+        "import subprocess,sys; subprocess.run(['git','init',sys.argv[1]],check=True)",
+        str(tmp_path),
+    )
+    assert initialized.returncode == 0, initialized.stderr
+
+    workflow_root = tmp_path / ".github" / "workflows"
+    workflow_root.mkdir(parents=True)
+    _ = (workflow_root / "ci.yml").write_text("name: CI\n", encoding="utf-8")
+    _ = (tmp_path / "pyproject.toml").write_text("[tool.pytest.ini_options]\n", encoding="utf-8")
+
+    result = run_python(str(DEPENDENCY_AUDIT_SCRIPT), str(tmp_path), "--json")
+
+    assert result.returncode == 0, result.stderr
+    audit = as_dict(json.loads(result.stdout))
+    assert audit["changed_files"] == [".github/workflows/ci.yml", "pyproject.toml"]
+    assert audit["package_managers"] == ["python", "github-actions"]
+    assert "pytest" in as_list(audit["validation_commands"])
+    assert "actionlint" in as_list(audit["validation_commands"])
 
 
 def test_codacy_context_detects_github_origin_without_exposing_token(tmp_path: Path) -> None:

@@ -456,7 +456,10 @@ def load_operations(arguments: argparse.Namespace, context: UptimeRobotContext) 
         with opener.open(spec_request, timeout=float(arguments.timeout)) as response:
             return decode_operations(response.read(), source=context.spec_url)
     except error.HTTPError as exception:
-        raise UptimeRobotCliError(f"OpenAPI request failed with HTTP {exception.code}.") from exception
+        try:
+            raise UptimeRobotCliError(f"OpenAPI request failed with HTTP {exception.code}.") from exception
+        finally:
+            exception.close()
     except error.URLError as exception:
         raise UptimeRobotCliError(f"OpenAPI request failed: {exception.reason}") from exception
 
@@ -749,10 +752,13 @@ def send_request(
                     raise UptimeRobotCliError(f"API request returned unexpected HTTP {status}.")
                 return ApiResult(payload=payload, status=status, url=url)
         except error.HTTPError as exception:
-            if plan.method in SAFE_METHODS and exception.code in RETRYABLE_STATUS_CODES and attempt < retries:
-                time.sleep(retry_delay(exception, attempt))
-                continue
-            raise UptimeRobotCliError(f"API request failed with HTTP {exception.code}.") from exception
+            try:
+                if plan.method in SAFE_METHODS and exception.code in RETRYABLE_STATUS_CODES and attempt < retries:
+                    time.sleep(retry_delay(exception, attempt))
+                    continue
+                raise UptimeRobotCliError(f"API request failed with HTTP {exception.code}.") from exception
+            finally:
+                exception.close()
         except error.URLError as exception:
             raise UptimeRobotCliError(f"API request failed: {exception.reason}") from exception
     raise UptimeRobotCliError("API request exhausted its retry budget.")

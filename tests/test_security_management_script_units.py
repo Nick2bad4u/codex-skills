@@ -366,6 +366,10 @@ def test_stepsecurity_url_body_redaction_and_links(tmp_path: Path) -> None:
     apply_query = cast("Callable[[str, dict[str, str]], str]", function(STEPSECURITY, "apply_query"))
     body_bytes = cast("Callable[[argparse.Namespace], bytes | None]", function(STEPSECURITY, "body_bytes"))
     redact = cast("Callable[[object], object]", function(STEPSECURITY, "redact"))
+    sensitive_header_values = cast(
+        "Callable[[dict[str, str]], tuple[str, ...]]",
+        function(STEPSECURITY, "sensitive_header_values"),
+    )
     parse_response = cast("Callable[[bytes, str], object]", function(STEPSECURITY, "parse_response"))
     next_link = cast("Callable[[object], str | None]", function(STEPSECURITY, "next_link"))
 
@@ -398,6 +402,10 @@ def test_stepsecurity_url_body_redaction_and_links(tmp_path: Path) -> None:
         "token": "<redacted>",
         "items": [{"ok": True}],
     }
+    assert sensitive_header_values({"Authorization": "Bearer secret", "Accept": "application/json"}) == (
+        "Bearer secret",
+        "secret",
+    )
     assert parse_response(b'{"secret":"x"}', "application/json") == {"secret": "<redacted>"}
     assert parse_response(b"plain", "text/plain") == "plain"
     assert next_link({"links": {"next": "/page/2"}}) == "/page/2"

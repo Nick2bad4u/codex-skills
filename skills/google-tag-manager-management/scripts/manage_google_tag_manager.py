@@ -288,7 +288,10 @@ def load_discovery(arguments: argparse.Namespace, context: GoogleTagManagerConte
             with opener.open(discovery_request, timeout=float(arguments.timeout)) as response:
                 payload = decode_json(response.read(), source=context.discovery_url)
         except error.HTTPError as exception:
-            raise GoogleTagManagerCliError(f"Discovery request failed with HTTP {exception.code}.") from exception
+            try:
+                raise GoogleTagManagerCliError(f"Discovery request failed with HTTP {exception.code}.") from exception
+            finally:
+                exception.close()
         except error.URLError as exception:
             raise GoogleTagManagerCliError(f"Discovery request failed: {exception.reason}") from exception
     validate_discovery_document(payload)
@@ -670,10 +673,13 @@ def send_request(
                     raise GoogleTagManagerCliError(f"API request returned unexpected HTTP {status}.")
                 return ApiResult(payload=payload, status=status, url=url)
         except error.HTTPError as exception:
-            if plan.method in SAFE_METHODS and exception.code in RETRYABLE_STATUS_CODES and attempt < retries:
-                time.sleep(retry_delay(exception, attempt))
-                continue
-            raise GoogleTagManagerCliError(f"API request failed with HTTP {exception.code}.") from exception
+            try:
+                if plan.method in SAFE_METHODS and exception.code in RETRYABLE_STATUS_CODES and attempt < retries:
+                    time.sleep(retry_delay(exception, attempt))
+                    continue
+                raise GoogleTagManagerCliError(f"API request failed with HTTP {exception.code}.") from exception
+            finally:
+                exception.close()
         except error.URLError as exception:
             raise GoogleTagManagerCliError(f"API request failed: {exception.reason}") from exception
     raise GoogleTagManagerCliError("API request exhausted its retry budget.")

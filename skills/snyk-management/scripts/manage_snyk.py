@@ -213,7 +213,10 @@ def get_json(url: str, *, timeout: float, source: str) -> JsonValue:
         with opener.open(request.Request(url, headers={"Accept": "application/json"}), timeout=timeout) as response:  # noqa: S310  # URL validated by caller.
             return response_payload(response.read(), response.headers.get("Content-Type", ""), source=source)
     except error.HTTPError as exception:
-        raise SnykCliError(f"{source} request failed with HTTP {exception.code}.") from exception
+        try:
+            raise SnykCliError(f"{source} request failed with HTTP {exception.code}.") from exception
+        finally:
+            exception.close()
     except error.URLError as exception:
         raise SnykCliError(f"{source} request failed: {exception.reason}") from exception
 
@@ -446,14 +449,17 @@ def send_request(context: SnykContext, plan: RequestPlan, arguments: argparse.Na
                     url=url,
                 )
         except error.HTTPError as exception:
-            payload = response_payload(
-                exception.read(), exception.headers.get("Content-Type", ""), source="Snyk REST API"
-            )
-            if exception.code in RETRYABLE_STATUS_CODES and attempt < int(arguments.retries):
-                time.sleep(retry_delay(exception, attempt))
-                continue
-            safe = redact_json(payload, context.token)
-            raise SnykCliError(f"Snyk REST API returned HTTP {exception.code}: {json.dumps(safe)}") from exception
+            try:
+                payload = response_payload(
+                    exception.read(), exception.headers.get("Content-Type", ""), source="Snyk REST API"
+                )
+                if exception.code in RETRYABLE_STATUS_CODES and attempt < int(arguments.retries):
+                    time.sleep(retry_delay(exception, attempt))
+                    continue
+                safe = redact_json(payload, context.token)
+                raise SnykCliError(f"Snyk REST API returned HTTP {exception.code}: {json.dumps(safe)}") from exception
+            finally:
+                exception.close()
         except error.URLError as exception:
             if attempt < int(arguments.retries):
                 time.sleep(min(2.0**attempt, 10.0))

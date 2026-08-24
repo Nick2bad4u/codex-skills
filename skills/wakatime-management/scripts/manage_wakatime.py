@@ -337,12 +337,17 @@ def send_request(context: WakaTimeContext, plan: RequestPlan, arguments: argpars
                     url=url,
                 )
         except error.HTTPError as exception:
-            payload = response_payload(exception.read(), exception.headers.get("Content-Type", ""))
-            if exception.code in RETRYABLE_STATUS_CODES and attempt < int(arguments.retries):
-                time.sleep(retry_delay(exception, attempt))
-                continue
-            safe = redact_json(payload, context.authentication.secret)
-            raise WakaTimeCliError(f"WakaTime API returned HTTP {exception.code}: {json.dumps(safe)}") from exception
+            try:
+                payload = response_payload(exception.read(), exception.headers.get("Content-Type", ""))
+                if exception.code in RETRYABLE_STATUS_CODES and attempt < int(arguments.retries):
+                    time.sleep(retry_delay(exception, attempt))
+                    continue
+                safe = redact_json(payload, context.authentication.secret)
+                raise WakaTimeCliError(
+                    f"WakaTime API returned HTTP {exception.code}: {json.dumps(safe)}"
+                ) from exception
+            finally:
+                exception.close()
         except error.URLError as exception:
             if attempt < int(arguments.retries):
                 time.sleep(min(2.0**attempt, 10.0))

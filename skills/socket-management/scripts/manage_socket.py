@@ -280,7 +280,10 @@ def load_openapi(arguments: argparse.Namespace, context: SocketContext) -> tuple
         ) as response:
             payload = decode_json(response.read(), source="Socket OpenAPI endpoint")
     except error.HTTPError as exception:
-        raise SocketCliError(f"OpenAPI request failed with HTTP {exception.code}.") from exception
+        try:
+            raise SocketCliError(f"OpenAPI request failed with HTTP {exception.code}.") from exception
+        finally:
+            exception.close()
     except error.URLError as exception:
         raise SocketCliError(f"OpenAPI request failed: {exception.reason}") from exception
     if not isinstance(payload, dict):
@@ -499,15 +502,18 @@ def send_request(
                 payload = response_payload(response.read(), response.headers.get("Content-Type", ""))
                 return ApiResult(payload=payload, status=int(response.status), url=url)
         except error.HTTPError as exception:
-            data = exception.read()
-            payload = response_payload(data, exception.headers.get("Content-Type", ""))
-            if exception.code in RETRYABLE_STATUS_CODES and attempt < retries:
-                time.sleep(parse_retry_after(exception, attempt))
-                continue
-            safe_payload = redact_json(payload, context.token)
-            raise SocketCliError(
-                f"Socket API returned HTTP {exception.code}: {json.dumps(safe_payload)}"
-            ) from exception
+            try:
+                data = exception.read()
+                payload = response_payload(data, exception.headers.get("Content-Type", ""))
+                if exception.code in RETRYABLE_STATUS_CODES and attempt < retries:
+                    time.sleep(parse_retry_after(exception, attempt))
+                    continue
+                safe_payload = redact_json(payload, context.token)
+                raise SocketCliError(
+                    f"Socket API returned HTTP {exception.code}: {json.dumps(safe_payload)}"
+                ) from exception
+            finally:
+                exception.close()
         except error.URLError as exception:
             if attempt < retries:
                 time.sleep(min(2.0**attempt, 10.0))

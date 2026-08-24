@@ -330,7 +330,14 @@ def load_openapi_document(arguments: argparse.Namespace, context: CodacyContext)
         spec_opener = request.build_opener(NoRedirectHandler())
         with spec_opener.open(spec_request, timeout=float(arguments.timeout)) as response:
             return response.read().decode("utf-8"), spec_url
-    except (error.HTTPError, error.URLError, UnicodeError, OSError) as exception:
+    except error.HTTPError as exception:
+        try:
+            raise CodacyCliError(
+                f"Unable to load the Codacy OpenAPI document: {safe_exception_text(exception)}"
+            ) from exception
+        finally:
+            exception.close()
+    except (error.URLError, UnicodeError, OSError) as exception:
         raise CodacyCliError(
             f"Unable to load the Codacy OpenAPI document: {safe_exception_text(exception)}"
         ) from exception
@@ -535,11 +542,14 @@ def send_request(
                         payload = mark_untrusted_text(text)
                 return ApiResult(payload=payload, status=status, url=url)
         except error.HTTPError as exception:
-            if exception.code in RETRYABLE_STATUS_CODES and attempt < runtime.retries:
-                time.sleep(retry_delay(exception, attempt, runtime.retry_base_delay))
-                continue
-            details = read_error_body(exception, context.token)
-            raise CodacyCliError(f"Codacy API returned HTTP {exception.code}: {details}") from exception
+            try:
+                if exception.code in RETRYABLE_STATUS_CODES and attempt < runtime.retries:
+                    time.sleep(retry_delay(exception, attempt, runtime.retry_base_delay))
+                    continue
+                details = read_error_body(exception, context.token)
+                raise CodacyCliError(f"Codacy API returned HTTP {exception.code}: {details}") from exception
+            finally:
+                exception.close()
         except error.URLError as exception:
             raise CodacyCliError(f"Unable to reach Codacy: {safe_exception_text(exception.reason)}") from exception
     raise CodacyCliError("Codacy request retry loop ended unexpectedly.")
