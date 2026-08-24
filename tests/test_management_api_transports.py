@@ -265,6 +265,53 @@ def test_yaml_contract_download_http_errors_are_closed(monkeypatch: pytest.Monke
     assert gtm_failure.fp.closed
 
 
+def test_codacy_dynamic_boundaries_and_response_decoding(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Cover Codacy argparse validation, fallback decoding, redaction, and JSON request bodies."""
+    as_string_list = cast("Callable[[object, str], list[str]]", function(CODACY, "as_string_list"))
+    decode_response = cast("Callable[[bytes, str | None], JsonValue]", function(CODACY, "decode_api_response"))
+    redact_json = cast("Callable[[JsonValue, str | None], JsonValue]", function(CODACY, "redact_json"))
+    helper_error = cast("type[Exception]", function(CODACY, "CodacyCliError"))
+
+    assert as_string_list(["query=value"], "Query values") == ["query=value"]
+    with pytest.raises(helper_error, match="list of strings"):
+        _ = as_string_list([1], "Query values")
+    assert redact_json(f"prefix-{TEST_CREDENTIAL}", TEST_CREDENTIAL) == "prefix-<redacted>"
+    assert decode_response(b"", None) is None
+    fallback = decode_response(f"not-json-{TEST_CREDENTIAL}".encode(), TEST_CREDENTIAL)
+    assert isinstance(fallback, str)
+    assert TEST_CREDENTIAL not in fallback
+    assert "<redacted>" in fallback
+
+    context_factory = cast("Callable[..., object]", function(CODACY, "CodacyContext"))
+    plan_factory = cast("Callable[..., object]", function(CODACY, "RequestPlan"))
+    runtime_factory = cast("Callable[..., object]", function(CODACY, "RequestRuntime"))
+    send = cast("Callable[..., object]", function(CODACY, "send_request"))
+    context = context_factory(
+        base_url="https://api.codacy.com/api/v3",
+        repository_root=REPO_ROOT,
+        slug=None,
+        token=TEST_CREDENTIAL,
+        token_env_name=TEST_ENVIRONMENT_NAME,
+    )
+    plan = plan_factory(body={"name": "demo"}, endpoint="/items", method="POST", operation_id=None, query={})
+    opener = install_opener(
+        monkeypatch,
+        [FakeResponse(b'{"id":"1"}', headers={"Content-Type": "application/json"})],
+    )
+    result = cast(
+        "ApiResultView",
+        send(
+            context,
+            plan,
+            query={},
+            runtime=runtime_factory(retries=0, retry_base_delay=0.0, timeout=1.0),
+        ),
+    )
+    assert result.payload == {"id": "1"}
+    assert opener.requests[0].data == b'{"name":"demo"}'
+    assert opener.requests[0].get_header("Content-type") == "application/json"
+
+
 def test_codacy_transport_retries_redacts_errors_and_merges_pages(monkeypatch: pytest.MonkeyPatch) -> None:
     """Exercise Codacy request construction, retry safety, and cursor aggregation."""
     context_factory = cast("Callable[..., object]", function(CODACY, "CodacyContext"))
