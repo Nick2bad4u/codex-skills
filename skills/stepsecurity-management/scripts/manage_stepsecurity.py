@@ -31,6 +31,7 @@ READ_METHODS = {"GET", "HEAD", "OPTIONS"}
 RETRY_STATUSES = {429, 502, 503, 504}
 REDIRECT_STATUSES = {301, 302, 303, 307, 308}
 SENSITIVE_NAME = re.compile(r"(?:api[-_]?key|authorization|cookie|credential|password|secret|token)", re.IGNORECASE)
+REDACTED_VALUE = "<redacted>"
 OWNER_FROM_REMOTE = re.compile(r"github\.com[:/](?P<owner>[^/]+)/(?P<repo>[^/]+?)(?:\.git)?$", re.IGNORECASE)
 CONTEXT_PATH_NAMES = {
     "organization": "org",
@@ -436,7 +437,7 @@ def body_bytes(arguments: argparse.Namespace) -> bytes | None:
 
 def safe_headers(headers: dict[str, str]) -> dict[str, str]:
     """Redact sensitive header values."""
-    return {name: "<redacted>" if SENSITIVE_NAME.search(name) else value for name, value in headers.items()}
+    return {name: REDACTED_VALUE if SENSITIVE_NAME.search(name) else value for name, value in headers.items()}
 
 
 def redact(value: object, sensitive_values: tuple[str, ...] = ()) -> object:
@@ -444,7 +445,7 @@ def redact(value: object, sensitive_values: tuple[str, ...] = ()) -> object:
     mapping = object_mapping(value)
     if mapping is not None:
         return {
-            str(key): "<redacted>" if SENSITIVE_NAME.search(str(key)) else redact(item, sensitive_values)
+            str(key): REDACTED_VALUE if SENSITIVE_NAME.search(str(key)) else redact(item, sensitive_values)
             for key, item in mapping.items()
         }
     items = object_list(value)
@@ -453,7 +454,7 @@ def redact(value: object, sensitive_values: tuple[str, ...] = ()) -> object:
     if isinstance(value, str):
         redacted = value
         for sensitive_value in sensitive_values:
-            redacted = redacted.replace(sensitive_value, "<redacted>")
+            redacted = redacted.replace(sensitive_value, REDACTED_VALUE)
         return redacted
     return value
 

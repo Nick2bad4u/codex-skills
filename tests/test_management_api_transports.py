@@ -191,13 +191,14 @@ def test_contract_download_http_errors_are_closed(monkeypatch: pytest.MonkeyPatc
     )
     codacy_failure = http_failure("https://api.codacy.com/api/api-docs/swagger.yaml", 503)
     _ = install_opener(monkeypatch, [codacy_failure])
+    codacy_spec_arguments = argparse.Namespace(spec_file=None, spec_url=None, timeout=1.0)
     with pytest.raises(codacy_error, match="Unable to load"):
-        _ = codacy_load(argparse.Namespace(spec_file=None, spec_url=None, timeout=1.0), codacy_context)
+        _ = codacy_load(codacy_spec_arguments, codacy_context)
     assert codacy_failure.fp.closed
 
     _ = install_opener(monkeypatch, [error.URLError("offline")])
     with pytest.raises(codacy_error, match="Unable to load"):
-        _ = codacy_load(argparse.Namespace(spec_file=None, spec_url=None, timeout=1.0), codacy_context)
+        _ = codacy_load(codacy_spec_arguments, codacy_context)
 
     socket_context_factory = cast("Callable[..., object]", function(SOCKET, "SocketContext"))
     socket_load = cast("Callable[..., object]", function(SOCKET, "load_openapi"))
@@ -212,8 +213,9 @@ def test_contract_download_http_errors_are_closed(monkeypatch: pytest.MonkeyPatc
     )
     socket_failure = http_failure("https://api.socket.dev/v0/openapi", 503)
     _ = install_opener(monkeypatch, [socket_failure])
+    socket_spec_arguments = argparse.Namespace(spec_file=None, spec_url=None, timeout=1.0)
     with pytest.raises(socket_error, match="OpenAPI request failed"):
-        _ = socket_load(argparse.Namespace(spec_file=None, spec_url=None, timeout=1.0), socket_context)
+        _ = socket_load(socket_spec_arguments, socket_context)
     assert socket_failure.fp.closed
 
     snyk_get_json = cast("Callable[..., object]", function(SNYK, "get_json"))
@@ -228,6 +230,9 @@ def test_contract_download_http_errors_are_closed(monkeypatch: pytest.MonkeyPatc
         )
     assert snyk_failure.fp.closed
 
+
+def test_yaml_contract_download_http_errors_are_closed(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Close failed YAML OpenAPI and Discovery responses before surfacing CLI errors."""
     uptime_context_factory = cast("Callable[..., object]", function(UPTIMEROBOT, "UptimeRobotContext"))
     uptime_load = cast("Callable[..., object]", function(UPTIMEROBOT, "load_operations"))
     uptime_error = cast("type[Exception]", function(UPTIMEROBOT, "UptimeRobotCliError"))
@@ -239,8 +244,9 @@ def test_contract_download_http_errors_are_closed(monkeypatch: pytest.MonkeyPatc
     )
     uptime_failure = http_failure("https://cdn.uptimerobot.com/api/openapi.yaml", 503)
     _ = install_opener(monkeypatch, [uptime_failure])
+    uptime_spec_arguments = argparse.Namespace(spec_file=None, timeout=1.0)
     with pytest.raises(uptime_error, match="OpenAPI request failed"):
-        _ = uptime_load(argparse.Namespace(spec_file=None, timeout=1.0), uptime_context)
+        _ = uptime_load(uptime_spec_arguments, uptime_context)
     assert uptime_failure.fp.closed
 
     gtm_context_factory = cast("Callable[..., object]", function(GTM, "GoogleTagManagerContext"))
@@ -253,8 +259,9 @@ def test_contract_download_http_errors_are_closed(monkeypatch: pytest.MonkeyPatc
     )
     gtm_failure = http_failure("https://tagmanager.googleapis.com/$discovery/rest?version=v2", 503)
     _ = install_opener(monkeypatch, [gtm_failure])
+    gtm_discovery_arguments = argparse.Namespace(discovery_file=None, timeout=1.0)
     with pytest.raises(gtm_error, match="Discovery request failed"):
-        _ = gtm_load(argparse.Namespace(discovery_file=None, timeout=1.0), gtm_context)
+        _ = gtm_load(gtm_discovery_arguments, gtm_context)
     assert gtm_failure.fp.closed
 
 
@@ -297,8 +304,9 @@ def test_codacy_transport_retries_redacts_errors_and_merges_pages(monkeypatch: p
         monkeypatch,
         [http_failure(url, 400, f'{{"message":"{TEST_CREDENTIAL}"}}'.encode())],
     )
+    terminal_runtime = runtime_factory(retries=0, retry_base_delay=0.0, timeout=1.0)
     with pytest.raises(helper_error) as captured:
-        _ = send(context, plan, query={}, runtime=runtime_factory(retries=0, retry_base_delay=0.0, timeout=1.0))
+        _ = send(context, plan, query={}, runtime=terminal_runtime)
     assert TEST_CREDENTIAL not in str(captured.value)
     assert "<redacted>" in str(captured.value)
 
@@ -374,8 +382,9 @@ def test_socket_transport_retries_redacts_errors_and_merges_pages(monkeypatch: p
             )
         ],
     )
+    terminal_arguments = argparse.Namespace(retries=0, timeout=1.0)
     with pytest.raises(helper_error) as captured:
-        _ = send(context, plan, query={}, arguments=argparse.Namespace(retries=0, timeout=1.0))
+        _ = send(context, plan, query={}, arguments=terminal_arguments)
     assert TEST_CREDENTIAL not in str(captured.value)
 
     responses = iter(
@@ -451,8 +460,9 @@ def test_snyk_transport_retries_redacts_errors_and_merges_pages(monkeypatch: pyt
             )
         ],
     )
+    terminal_arguments = argparse.Namespace(retries=0, timeout=1.0)
     with pytest.raises(helper_error) as captured:
-        _ = send(context, plan, argparse.Namespace(retries=0, timeout=1.0))
+        _ = send(context, plan, terminal_arguments)
     assert TEST_CREDENTIAL not in str(captured.value)
 
     responses = iter(
@@ -525,8 +535,9 @@ def test_wakatime_transport_retries_and_redacts_errors(monkeypatch: pytest.Monke
             )
         ],
     )
+    terminal_arguments = argparse.Namespace(retries=0, timeout=1.0)
     with pytest.raises(helper_error) as captured:
-        _ = send(context, plan, argparse.Namespace(retries=0, timeout=1.0))
+        _ = send(context, plan, terminal_arguments)
     assert TEST_CREDENTIAL not in str(captured.value)
 
 
@@ -608,13 +619,14 @@ def test_uptimerobot_transport_retries_and_fails_closed(monkeypatch: pytest.Monk
         _ = response_payload(b"not-json", "application/json")
 
     _ = install_opener(monkeypatch, [error.URLError("offline")])
+    terminal_arguments = argparse.Namespace(retries=0, timeout=1.0)
     with pytest.raises(helper_error, match="offline"):
-        _ = send(plan, url, credential, argparse.Namespace(retries=0, timeout=1.0))
+        _ = send(plan, url, credential, terminal_arguments)
 
     terminal_failure = http_failure(url, 400)
     _ = install_opener(monkeypatch, [terminal_failure])
     with pytest.raises(helper_error, match="HTTP 400"):
-        _ = send(plan, url, credential, argparse.Namespace(retries=0, timeout=1.0))
+        _ = send(plan, url, credential, terminal_arguments)
     assert terminal_failure.fp.closed
 
 
@@ -680,6 +692,7 @@ def test_gtm_transport_retries_sends_json_and_fails_closed(monkeypatch: pytest.M
 
     terminal_failure = http_failure(url, 400)
     _ = install_opener(monkeypatch, [terminal_failure])
+    terminal_arguments = argparse.Namespace(retries=0, timeout=1.0)
     with pytest.raises(helper_error, match="HTTP 400"):
-        _ = send(plan, url, credential, argparse.Namespace(retries=0, timeout=1.0))
+        _ = send(plan, url, credential, terminal_arguments)
     assert terminal_failure.fp.closed

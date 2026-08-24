@@ -36,14 +36,18 @@ MATCHING_QUOTE_MIN_LENGTH = 2
 HTTP_TOO_MANY_REQUESTS = 429
 HTTP_SERVICE_UNAVAILABLE = 503
 HTTP_GATEWAY_TIMEOUT = 504
+HTTP_SUCCESS_MIN = 200
+HTTP_SUCCESS_LIMIT = 300
 RETRYABLE_STATUS_CODES = frozenset({HTTP_TOO_MANY_REQUESTS, HTTP_SERVICE_UNAVAILABLE, HTTP_GATEWAY_TIMEOUT})
-ENVIRONMENT_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
-OPENAPI_PATH = re.compile(r"^  (/[^:]+):\s*$")
-OPENAPI_METHOD = re.compile(r"^    (get|post|put|patch|delete):\s*$", re.IGNORECASE)
-OPENAPI_OPERATION_ID = re.compile(r"^      operationId:\s*(.+?)\s*$")
-OPENAPI_SUMMARY = re.compile(r"^      summary:\s*(.+?)\s*$")
+ENVIRONMENT_NAME = re.compile(r"^(?!\d)\w+$", re.ASCII)
+OPENAPI_PATH = re.compile(r"^ {2}(/[^:]+):\s*$")
+OPENAPI_METHOD = re.compile(r"^ {4}(get|post|put|patch|delete):\s*$", re.IGNORECASE)
+OPENAPI_OPERATION_ID = re.compile(r"^ {6}operationId:(.+)$")
+OPENAPI_SUMMARY = re.compile(r"^ {6}summary:(.+)$")
 PATH_PARAMETER = re.compile(r"\{([^{}]+)\}")
 SENSITIVE_KEY = re.compile(r"(?:^|[-_])(api[-_]?key|authorization|password|secret|token)(?:$|[-_])", re.IGNORECASE)
+JSON_MEDIA_TYPE = "application/json"
+REDACTED_VALUE = "<redacted>"
 
 
 class CodacyCliError(RuntimeError):
@@ -241,10 +245,19 @@ def resolve_token(token_envs: list[str]) -> tuple[str | None, str | None]:
     return None, None
 
 
+def as_string_list(value: object, label: str) -> list[str]:
+    """Validate a dynamic argparse value as a string list."""
+    if isinstance(value, list):
+        items = cast("list[object]", value)
+        if all(isinstance(item, str) for item in items):
+            return [item for item in items if isinstance(item, str)]
+    raise CodacyCliError(f"{label} must be a list of strings.")
+
+
 def resolve_context(arguments: argparse.Namespace) -> CodacyContext:
     """Resolve local repository, slug, base URL, and optional token."""
     repository_root = cast("Path", arguments.repo)
-    token, token_env_name = resolve_token(cast("list[str]", arguments.token_envs))
+    token, token_env_name = resolve_token(as_string_list(arguments.token_envs, "Token environments"))
     return CodacyContext(
         base_url=sanitize_base_url(str(arguments.base_url)),
         repository_root=repository_root,
@@ -470,12 +483,13 @@ def redact_json(value: JsonValue, token: str | None = None) -> JsonValue:
     """Redact likely secret fields and the active token from JSON output."""
     if isinstance(value, dict):
         return {
-            key: "<redacted>" if SENSITIVE_KEY.search(key) else redact_json(item, token) for key, item in value.items()
+            key: REDACTED_VALUE if SENSITIVE_KEY.search(key) else redact_json(item, token)
+            for key, item in value.items()
         }
     if isinstance(value, list):
         return [redact_json(item, token) for item in value]
     if isinstance(value, str) and token and token in value:
-        return value.replace(token, "<redacted>")
+        return value.replace(token, REDACTED_VALUE)
     return value
 
 
@@ -486,7 +500,7 @@ def read_error_body(http_error: error.HTTPError, token: str | None) -> str:
     except OSError:
         raw = str(http_error.reason)
     if token:
-        raw = raw.replace(token, "<redacted>")
+        raw = raw.replace(token, REDACTED_VALUE)
     return mark_untrusted_text(raw)
 
 
@@ -501,6 +515,19 @@ def retry_delay(http_error: error.HTTPError, attempt: int, base_delay: float) ->
     return min(base_delay * (2.0**attempt), 60.0)
 
 
+def decode_api_response(raw: bytes, token: str | None) -> JsonValue:
+    """Decode one API response and redact malformed text fallbacks."""
+    if not raw:
+        return None
+    try:
+        return cast("JsonValue", json.loads(raw.decode("utf-8")))
+    except UnicodeError, json.JSONDecodeError:
+        text = raw.decode("utf-8", errors="replace")
+        if token:
+            text = text.replace(token, REDACTED_VALUE)
+        return mark_untrusted_text(text)
+
+
 def send_request(
     context: CodacyContext,
     plan: RequestPlan,
@@ -510,12 +537,12 @@ def send_request(
 ) -> ApiResult:
     """Send one Codacy request with conservative transient retries."""
     url = build_url(context.base_url, plan.endpoint, query)
-    headers = {"Accept": "application/json", "User-Agent": "codacy-management-skill/1"}
+    headers = {"Accept": JSON_MEDIA_TYPE, "User-Agent": "codacy-management-skill/1"}
     if context.token is not None:
         headers["api-token"] = context.token
     body_bytes = None
     if plan.body is not None:
-        headers["Content-Type"] = "application/json"
+        headers["Content-Type"] = JSON_MEDIA_TYPE
         body_bytes = json.dumps(plan.body, separators=(",", ":")).encode("utf-8")
 
     for attempt in range(runtime.retries + 1):
@@ -530,17 +557,7 @@ def send_request(
             with api_opener.open(api_request, timeout=runtime.timeout) as response:
                 raw = response.read()
                 status = int(response.status)
-                if not raw:
-                    payload: JsonValue = None
-                else:
-                    try:
-                        payload = cast("JsonValue", json.loads(raw.decode("utf-8")))
-                    except UnicodeError, json.JSONDecodeError:
-                        text = raw.decode("utf-8", errors="replace")
-                        if context.token:
-                            text = text.replace(context.token, "<redacted>")
-                        payload = mark_untrusted_text(text)
-                return ApiResult(payload=payload, status=status, url=url)
+                return ApiResult(payload=decode_api_response(raw, context.token), status=status, url=url)
         except error.HTTPError as exception:
             try:
                 if exception.code in RETRYABLE_STATUS_CODES and attempt < runtime.retries:
@@ -640,8 +657,8 @@ def request_plan(arguments: argparse.Namespace, context: CodacyContext) -> Reque
         method = operation.method
         endpoint = operation.path
 
-    path_values = parse_pairs(cast("list[str]", arguments.path_values), "path")
-    query = parse_pairs(cast("list[str]", arguments.query), "query", reject_sensitive=True)
+    path_values = parse_pairs(as_string_list(arguments.path_values, "Path values"), "path")
+    query = parse_pairs(as_string_list(arguments.query, "Query values"), "query", reject_sensitive=True)
     expanded_endpoint = expand_endpoint(cast("str", endpoint), context, path_values)
     body = load_body(arguments)
     if method == "GET" and body is not None:
@@ -654,7 +671,7 @@ def plan_preview(context: CodacyContext, plan: RequestPlan, *, paginate: bool) -
     return {
         "body": redact_json(plan.body, context.token),
         "dryRun": True,
-        "headers": {"Accept": "application/json", "api-token": "<redacted>" if context.token else "<absent>"},
+        "headers": {"Accept": JSON_MEDIA_TYPE, "api-token": REDACTED_VALUE if context.token else "<absent>"},
         "method": plan.method,
         "operationId": plan.operation_id,
         "paginate": paginate,
@@ -771,7 +788,7 @@ def handle_request(arguments: argparse.Namespace) -> int:
     else:
         _ = sys.stdout.write("[untrusted-codacy-data]\n")
         write_json(output)
-    return 0
+    return int(not HTTP_SUCCESS_MIN <= result.status < HTTP_SUCCESS_LIMIT)
 
 
 def common_parser() -> argparse.ArgumentParser:
