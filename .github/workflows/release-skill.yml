@@ -274,7 +274,10 @@ jobs:
                   TAG: "${{ steps.vars.outputs.tag }}"
               run: |
                   npm run changelog:generate -- --tag "$TAG"
+                  # git-cliff's Markdown tables require two passes to reach Prettier's fixed point.
                   node node_modules/prettier/bin/prettier.cjs CHANGELOG.md --write --log-level warn
+                  node node_modules/prettier/bin/prettier.cjs CHANGELOG.md --write --log-level warn
+                  node node_modules/prettier/bin/prettier.cjs CHANGELOG.md --check --log-level warn
 
             - name: "Validate npm package"
               run: "npm run release:verify"
