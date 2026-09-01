@@ -33,8 +33,8 @@ defaults:
         shell: "bash"
 
 concurrency:
-    group: "release-skill-${{ github.ref || inputs.version || inputs.release_type }}"
-    cancel-in-progress: true
+    group: "release-skill"
+    cancel-in-progress: "${{ false }}"
 
 jobs:
     release:
@@ -90,23 +90,38 @@ jobs:
                   INPUT_RELEASE_TYPE: "${{ inputs.release_type }}"
                   INPUT_VERSION: "${{ inputs.version }}"
               run: |
+                  set -euo pipefail
+
                   if [ "${EVENT_NAME}" = "workflow_dispatch" ]; then
                     EXPLICIT_VERSION="${INPUT_VERSION}"
                     RELEASE_TYPE="${INPUT_RELEASE_TYPE}"
 
                     if [ -n "${EXPLICIT_VERSION}" ]; then
-                      if ! [[ "${EXPLICIT_VERSION}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-                        echo "version must be in x.y.z format" >&2
+                      if ! [[ "${EXPLICIT_VERSION}" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
+                        echo "version must be a SemVer x.y.z value without prerelease or build metadata" >&2
                         exit 1
                       fi
                       NEXT_VERSION="${EXPLICIT_VERSION}"
                     else
-                      LATEST_TAG="$(git tag --list 'v[0-9]*.[0-9]*.[0-9]*' --sort=-v:refname | head -n 1)"
+                      REACHABLE_TAGS="$(git tag --merged HEAD --list 'v*' --sort=-v:refname)"
+                      LATEST_TAG=""
+
+                      while IFS= read -r CANDIDATE_TAG; do
+                        if [[ "${CANDIDATE_TAG}" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
+                          LATEST_TAG="${CANDIDATE_TAG}"
+                          break
+                        fi
+                      done <<< "${REACHABLE_TAGS}"
 
                       if [ -n "${LATEST_TAG}" ]; then
                         BASE_VERSION="${LATEST_TAG#v}"
                       else
                         BASE_VERSION="$(node -p "require('./package.json').version")"
+                      fi
+
+                      if ! [[ "${BASE_VERSION}" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
+                        echo "Base version '${BASE_VERSION}' is not a SemVer x.y.z value" >&2
+                        exit 1
                       fi
 
                       IFS='.' read -r MAJOR MINOR PATCH <<< "${BASE_VERSION}"
@@ -138,7 +153,7 @@ jobs:
                     TAG="${GITHUB_REF_NAME}"
                   fi
 
-                  if ! [[ "${TAG}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+                  if ! [[ "${TAG}" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
                     echo "Resolved tag '${TAG}' is not in vX.Y.Z format" >&2
                     exit 1
                   fi
@@ -154,12 +169,6 @@ jobs:
                     echo "asset=${ASSET}"
                   } >> "$GITHUB_OUTPUT"
 
-            - name: "Prepare npm package version"
-              run: "npm version --no-git-tag-version '${{ steps.vars.outputs.version }}'"
-
-            - name: "Validate npm package"
-              run: "npm run release:verify"
-
             - name: "Prepare expected release tag for manual runs"
               if: "github.event_name == 'workflow_dispatch'"
               env:
@@ -170,6 +179,17 @@ jobs:
                   if [ -z "$EXPECTED_TAG" ]; then
                     echo "::error::The release version step did not provide an expected tag."
                     exit 1
+                  fi
+
+                  if git ls-remote --exit-code --refs --tags origin "refs/tags/${EXPECTED_TAG}" >/dev/null; then
+                    echo "::error::Remote release tag ${EXPECTED_TAG} already exists; refusing to reuse it during a manual release."
+                    exit 1
+                  else
+                    remote_tag_status=$?
+                    if [ "$remote_tag_status" -ne 2 ]; then
+                      echo "::error::Unable to verify whether remote release tag ${EXPECTED_TAG} exists."
+                      exit "$remote_tag_status"
+                    fi
                   fi
 
                   if git show-ref --verify --quiet "refs/tags/${EXPECTED_TAG}"; then
@@ -209,6 +229,56 @@ jobs:
                     exit 1
                   fi
 
+            - name: "Verify publication targets are unused"
+              env:
+                  GH_TOKEN: "${{ secrets.GITHUB_TOKEN }}"
+                  PACKAGE_VERSION: "${{ steps.vars.outputs.version }}"
+                  RELEASE_TAG: "${{ steps.vars.outputs.tag }}"
+              run: |
+                  set -euo pipefail
+
+                  package_name="$(node -p "require('./package.json').name")"
+                  npm_error="${RUNNER_TEMP}/npm-view-error.log"
+
+                  if npm view "${package_name}@${PACKAGE_VERSION}" version --json >/dev/null 2>"$npm_error"; then
+                    echo "::error::${package_name}@${PACKAGE_VERSION} is already published; refusing to overwrite or skip it."
+                    exit 1
+                  else
+                    npm_status=$?
+                    if ! grep -q "E404" "$npm_error"; then
+                      echo "::error::Unable to prove that ${package_name}@${PACKAGE_VERSION} is unpublished."
+                      sed 's/^/npm: /' "$npm_error" >&2
+                      exit "$npm_status"
+                    fi
+                  fi
+
+                  github_error="${RUNNER_TEMP}/github-release-error.log"
+                  if gh api --silent "repos/${GITHUB_REPOSITORY}/releases/tags/${RELEASE_TAG}" >/dev/null 2>"$github_error"; then
+                    echo "::error::GitHub release ${RELEASE_TAG} already exists; refusing to edit or clobber it."
+                    exit 1
+                  else
+                    github_status=$?
+                    if ! grep -q "HTTP 404" "$github_error"; then
+                      echo "::error::Unable to prove that GitHub release ${RELEASE_TAG} does not exist."
+                      sed 's/^/gh: /' "$github_error" >&2
+                      exit "$github_status"
+                    fi
+                  fi
+
+            - name: "Prepare npm package version"
+              run: "npm version --no-git-tag-version '${{ steps.vars.outputs.version }}'"
+
+            - name: "Generate full changelog"
+              env:
+                  GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}"
+                  TAG: "${{ steps.vars.outputs.tag }}"
+              run: |
+                  npm run changelog:generate -- --tag "$TAG"
+                  npx prettier CHANGELOG.md --write --log-level warn
+
+            - name: "Validate npm package"
+              run: "npm run release:verify"
+
             - name: "Generate release notes"
               id: "git-cliff"
               uses: "orhun/git-cliff-action@f50e11560dce63f7c33227798f90b924471a88b5" # v4
@@ -221,11 +291,47 @@ jobs:
                   GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}"
 
             - name: "Build release bundle"
+              env:
+                  ASSET: "${{ steps.vars.outputs.asset }}"
               run: |
+                  pack_result="${RUNNER_TEMP}/npm-pack.json"
+                  package_dir="${RUNNER_TEMP}/release-package"
+
                   mkdir -p dist
-                  zip -r "dist/${{ steps.vars.outputs.asset }}" \
-                    skills schemas tools README.md AGENTS.md LICENSE LICENSE.txt package.json types.d.ts \
-                    -x '*/__pycache__/*' '*.py[co]'
+                  npm pack --json --pack-destination "${RUNNER_TEMP}" --allow-directory=all > "$pack_result"
+
+                  tarball="$(
+                    PACK_RESULT="$pack_result" node --input-type=commonjs -e '
+                      const { readFileSync } = require("node:fs");
+                      const result = JSON.parse(readFileSync(process.env.PACK_RESULT, "utf8"));
+                      const packages = Array.isArray(result) ? result : Object.values(result);
+
+                      if (packages.length !== 1 || typeof packages[0]?.filename !== "string") {
+                        throw new Error("npm pack did not return exactly one tarball filename");
+                      }
+
+                      process.stdout.write(packages[0].filename);
+                    '
+                  )"
+
+                  if [ -z "$tarball" ] || [ "$tarball" != "$(basename "$tarball")" ]; then
+                    echo "::error::npm pack did not return a safe tarball filename."
+                    exit 1
+                  fi
+
+                  mkdir -p "$package_dir"
+                  tar --extract --gzip --file "${RUNNER_TEMP}/${tarball}" \
+                    --directory "$package_dir" --strip-components=1
+
+                  if [ ! -f "${package_dir}/CHANGELOG.md" ]; then
+                    echo "::error::The npm package manifest omitted CHANGELOG.md."
+                    exit 1
+                  fi
+
+                  (
+                    cd "$package_dir"
+                    zip -r "${GITHUB_WORKSPACE}/dist/${ASSET}" .
+                  )
 
             - name: "Upload workflow artifact"
               uses: "actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a" # v7.0.1
@@ -236,15 +342,7 @@ jobs:
                   retention-days: 7
 
             - name: "Publish npm package"
-              run: |
-                  PACKAGE_NAME="$(node -p "require('./package.json').name")"
-                  VERSION="${{ steps.vars.outputs.version }}"
-
-                  if npm view "${PACKAGE_NAME}@${VERSION}" version >/dev/null 2>&1; then
-                    echo "${PACKAGE_NAME}@${VERSION} is already published; skipping npm publish."
-                  else
-                    npm publish --access public --provenance
-                  fi
+              run: "npm publish --access public --provenance"
 
             - name: "Publish GitHub release asset"
               env:
@@ -254,9 +352,4 @@ jobs:
                   NOTES: "${{ steps.git-cliff.outputs.changelog }}"
                   TARGET: "${{ steps.vars.outputs.target }}"
               run: |
-                  if gh release view "$TAG" >/dev/null 2>&1; then
-                    gh release edit "$TAG" --notes-file "$NOTES"
-                    gh release upload "$TAG" "$ASSET" --clobber
-                  else
-                    gh release create "$TAG" "$ASSET" --target "$TARGET" --title "$TAG" --notes-file "$NOTES"
-                  fi
+                  gh release create "$TAG" "$ASSET" --target "$TARGET" --title "$TAG" --notes-file "$NOTES"
