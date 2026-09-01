@@ -70,7 +70,7 @@ Do not attempt version creation while conflicts remain.
 - The exact version ID and fingerprint are reviewed.
 - The environment and account/container IDs are explicit.
 - The user has authorized publication, not merely version creation.
-- Required `tagmanager.publish` scope and GTM permission are confirmed.
+- An acceptable publish scope reported by current Discovery metadata and the GTM permission are confirmed.
 - The helper/API preview is retained without credentials.
 - The publish response has no compiler error.
 - The live version is re-read and matches the intended version.

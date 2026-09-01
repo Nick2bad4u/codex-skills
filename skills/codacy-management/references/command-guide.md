@@ -300,6 +300,17 @@ python "<path-to-skill>/scripts/manage_codacy.py" request --repo "." --operation
 python "<path-to-skill>/scripts/manage_codacy.py" request --repo "." --operation-id searchRepositoryIssues --body-json '{"levels":["Error","Warning"],"categories":["Security"]}' --paginate --send --json
 ```
 
+Automatic retries apply only to GET requests. A POST search is logically read-only in this example, but the helper's current OpenAPI metadata cannot prove that property, so every non-GET request is single-attempt even when `--retries` is nonzero. A non-GET HTTP 408, 429, or any 5xx response is potentially indeterminate, as is a transport, bounded-read, decode, redaction, serialization, or output failure after send. In each case, inspect current Codacy state before deciding whether to send a new request.
+
+The helper's safety limits are part of its command contract:
+
+- The loaded account token appears only in the `api-token` header. Plain, form-encoded, percent-encoded, or repeatedly encoded reuse in an operation ID, URL authority/hostname, final path/query, or recursive body scalar is rejected before lookup or preview and again before authenticated transport.
+- Preview and result URLs, including URL strings nested in JSON, redact the active token and credential-like query values such as unknown tokens, keys, or signatures. Reconstructed URLs are rescanned and fail closed; sensitive structured JSON keys are also redacted.
+- JSON is strict: request bodies, structured errors, API responses, redaction trees, and output reject `NaN`, `Infinity`, and `-Infinity` and allow at most 64 container levels.
+- `--timeout` must be finite, greater than 0, and at most 300 seconds; `--retry-delay` must be finite and between 0 and 60 seconds; `--retries` is from 0 through 10; and `--max-pages` is from 1 through 500.
+- `Retry-After` accepts only ASCII decimal delay-seconds or a timezone-aware HTTP date. Delays cap at 60 seconds; past dates become zero delay; fractional, scientific, negative, non-ASCII, malformed, and timezone-less values use bounded exponential fallback.
+- OpenAPI downloads are limited to 16 MiB, individual API responses to 8 MiB, cumulative pagination to 32 MiB, and captured HTTP error bodies to 16 KiB. Missing or dishonest `Content-Length` headers do not bypass these limits.
+
 Prefer `--body-file` for a complex reviewed body so shell quoting cannot change it:
 
 ```powershell
@@ -312,7 +323,7 @@ python "<path-to-skill>/scripts/manage_codacy.py" request --repo "." --operation
 python "<path-to-skill>/scripts/manage_codacy.py" request --repo "." "/analysis/organizations/{provider}/{remoteOrganizationName}/repositories/{repositoryName}/quality-settings" --json
 ```
 
-For Self-hosted, pass both API and spec identity when the derived path is not correct:
+For Self-hosted, pass both API and spec identity when the derived path is not correct. The host may be custom, but it must be present, IPv6 literals must be bracketed, any explicit port must be from 1 through 65535, and implicit HTTPS is same-origin with explicit port 443. The HTTPS API base path must normalize exactly and case-sensitively to `/api/v3`:
 
 ```powershell
 python "<path-to-skill>/scripts/manage_codacy.py" operations --base-url "https://codacy.example.com/api/v3" --spec-url "https://codacy.example.com/api/api-docs/swagger.yaml" --search repository --json
@@ -344,10 +355,13 @@ Before executing a mutation:
 
 ### Empty or incomplete lists
 
-- Check `pagination.total` and whether a cursor remains.
+- An absent `pagination` object or absent cursor completes pagination. If present, `pagination` must be an object and its cursor must be a nonblank string without surrounding whitespace; malformed metadata fails closed.
+- Check `pagination.total` and whether a cursor remains. A cursor on the configured final page fails as incomplete, and `fetchedPages` always reports the actual number of fetched responses.
 - Raise `--limit` only up to 1000.
+- Raise `--max-pages` only up to the helper cap of 500.
 - Verify branch, status, severity, category, tool, and ignored filters.
 - Distinguish unavailable sections under repository-token scope from zero results.
+- If a response or cumulative pagination result reaches the helper's byte safety limit, narrow the filters or page size instead of bypassing the limit.
 
 ### Tool or pattern change has no effect
 

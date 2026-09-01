@@ -87,6 +87,8 @@ Follow `links.next` conservatively:
 python scripts/manage_stepsecurity.py request --spec-file C:\Temp\stepsecurity-openapi.json --operation-id listDetections --org Nick2bad4u --paginate --max-pages 20
 ```
 
+Inspect `complete`, `pageCount`, `maxPages`, and `nextLink` in the result. `nextLink` is either `null` or a fully validated StepSecurity `/v1` URL. If `complete` is `false`, the pages are a partial inventory even when the command succeeded; continue deliberately or report the limit.
+
 Use `--dry-run` to inspect a GET request without sending it:
 
 ```powershell
@@ -190,8 +192,14 @@ Confirm key type, organization scope, and required permission. Do not solve a mi
 
 ### Redirect rejected
 
-The helper rejects cross-origin and out-of-base redirects. Inspect the response and current documentation instead of disabling the safeguard.
+The helper rejects every redirect for a mutation. Because the first request was attempted, its outcome is indeterminate: inspect the exact resource or StepSecurity audit log before retrying. Reads retain the production-origin and `/v1` base-path lock, reject cycles, and stop after five redirect hops independently of the retry budget. Inspect the response and current documentation instead of disabling the safeguard.
+
+### Transport or response read failed
+
+The helper bounds and redacts operating-system and HTTP-client failures from request opening, success-body reads, HTTP-error-body reads, and response closure. It attempts closure for every acquired response path and prints a concise error without a traceback; if `close()` itself fails, the helper reports that failure and does not claim that closure succeeded. Only GET can retry; POST, PUT, PATCH, and DELETE are never replayed. For any failed attempted mutation, treat the result as indeterminate and inspect the exact resource or StepSecurity audit log before retrying manually.
+
+Valid request and response JSON is limited to 64 container levels, must contain only finite numbers, and is redacted and validated iteratively. Command output reserves a small additional depth allowance for its own response and pagination envelope. A bounded non-JSON or malformed-JSON body is preserved in full, including beyond 100,000 characters; no hidden body truncation applies beyond the documented byte limits.
 
 ### Partial results
 
-Use `--paginate`, raise `--max-pages` deliberately, and report the limit. Preserve the original filter and time window when comparing repeated queries.
+Use `--paginate`, raise `--max-pages` deliberately, and report `complete`, `pageCount`, `maxPages`, and the validated `nextLink`. Never call the result a complete detection, incident, policy, or posture inventory when `complete` is false. Preserve the original filter and time window when comparing repeated queries. Repeated or malformed next links fail closed with the fetched-page count, and the helper also enforces a cumulative response-byte limit.

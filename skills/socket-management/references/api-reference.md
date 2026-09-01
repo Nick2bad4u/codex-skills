@@ -24,7 +24,7 @@ Recheck these official sources because Socket adds endpoints and deprecates olde
 - Alert triage and resolutions: <https://docs.socket.dev/docs/alert-actions-and-triage-functionality>
 - Policy API: <https://docs.socket.dev/docs/security-policy-api>
 
-The API base is `https://api.socket.dev/v0`. The live OpenAPI document is authoritative for current operation IDs, required parameters, request schemas, token scopes, endpoint quota cost, and deprecation state.
+The API base is `https://api.socket.dev/v0`. The helper accepts only that canonical official origin and `/v0` base path; it intentionally has no custom-origin or single-tenant mode. The live OpenAPI document is authoritative for current operation IDs, required parameters, request schemas, token scopes, endpoint quota cost, and deprecation state.
 
 ## Authentication And Scope
 
@@ -33,7 +33,7 @@ Socket API requests use organization tokens. Authenticate with either:
 - `Authorization: Bearer <token>`; or
 - HTTP Basic authentication with the token as the username and an empty password.
 
-The helper deliberately uses Bearer authentication and reads tokens only from environment variables. The official CLI recognizes `SOCKET_SECURITY_API_TOKEN`. Do not place tokens in URLs or `--config` JSON.
+The helper deliberately uses Bearer authentication and reads tokens only from environment variables. The official CLI recognizes `SOCKET_SECURITY_API_TOKEN`. Before attaching that header, the helper validates the official origin and query names and repeatedly percent-decodes specification and endpoint paths, up to eight rounds, while requiring every representation to remain under `/v0`. It rejects direct, encoded, and double-encoded traversal; encoded slash, backslash, query, or fragment delimiters; controls; malformed UTF-8 or percent escapes; and dangerous residual nesting. Encoded spaces, plus, equals, non-ASCII text, and a nonstructural literal percent remain valid path-parameter data. Do not place tokens in URLs or `--config` JSON.
 
 Organization tokens can be restricted by repository and granular scopes. Required scopes appear on each OpenAPI operation. Examples include `alerts:list`, `alert-resolution:create`, `alert-resolution:delete`, `full-scans:list`, `full-scans:create`, `full-scans:delete`, `report:read`, and historical-data scopes. Authentication-required operations marked with no additional scope still need a valid token.
 
@@ -41,7 +41,13 @@ Use a repository-restricted token for repository automation. An org-wide token i
 
 ## API Contract And Quota
 
-Every endpoint consumes a documented number of quota units. Each token has an hourly quota. HTTP `429` means the token cannot currently afford the endpoint; obey the numeric `Retry-After` header and retry conservatively. Query `getQuota` or `GET /quota` before a large export or historical-data loop.
+Every endpoint consumes a documented number of quota units. Each token has an hourly quota. HTTP `429` means the token cannot currently afford the endpoint. The helper automatically retries only GET transport failures and GET HTTP `408`, `429`, `500`, `502`, `503`, and `504`. It obeys a finite, nonnegative numeric `Retry-After` only for those GET reads and caps every retry delay at 60 seconds; invalid or non-finite values use a bounded fallback. It never automatically retries POST, PUT, PATCH, or DELETE, because replaying a write can duplicate a change. `--retries` accepts 0 through 10. Query `getQuota` or `GET /quota` before a large export or historical-data loop.
+
+The helper enforces independent actual-byte ceilings: 16 MiB (16,777,216 bytes) for a local OpenAPI document, 16 MiB (16,777,216 bytes) for a remote OpenAPI document, 8 MiB (8,388,608 bytes) for one successful API response, and 16 KiB (16,384 bytes) for one API error response. A single trustworthy nonnegative decimal `Content-Length` can reject a response early, but never authorizes it: every accepted stream is still read with a limit-plus-one bound, including when the header is absent, duplicated, malformed, or understated. Responses and HTTP errors are closed on success, rejection, decoding failure, and retry paths.
+
+Request bodies, local and remote OpenAPI documents, JSON responses, error JSON, previews, and command output use strict finite JSON. The helper rejects `NaN`, `Infinity`, `-Infinity`, and valid-looking exponents that overflow to infinity. Every JSON encoding uses `allow_nan=False` semantics and completes before request bytes or an output prefix are written, so an encoding failure is atomic. Socket endpoints that genuinely return a non-JSON media type may still return bounded text, but a response declared as JSON must parse under the strict finite contract.
+
+Redaction applies recursively to mappings, lists, and scalar strings. Key matching tokenizes separators, camelCase, PascalCase, and acronym plurals and recognizes semantic credential fields such as API/access/provider/integration/secret/Sentinel keys, tokens, cookies, sessions, credentials, passwords, authorization, and webhooks. It does not use arbitrary trailing-`s` or suffix stripping, so ordinary fields such as `possessions`, `tokenExpirationDays`, `sessionTimeoutMinutes`, `webhookEnabled`, `jiraProjectKey`, `providerName`, and `secretScanningEnabled` remain visible. Scalar handling removes credible authorization assignments, Bearer/token credentials, valid Basic credentials, URL user information, and sensitive assignments while preserving prose such as “token expiration,” “basic configuration,” and “Bearer is the auth scheme.” Active credentials are removed in raw, scheme-wrapped and scheme-stripped, quoted, query/form, URL-user-info, and partially or fully percent-encoded forms; each character may independently remain raw or be encoded, and percent-triplet hex is matched case-insensitively without making ordinary raw token matching case-insensitive. Transport reasons receive the same treatment and are then limited to 1,000 characters.
 
 The API lifecycle page and OpenAPI `deprecated` fields are authoritative. Full scans replace legacy report endpoints. The unscoped `POST /purl` operation was deprecated on 2026-01-05; prefer the org-scoped PURL endpoint when organization policy context matters.
 
@@ -99,7 +105,7 @@ Policy changes affect future evaluations. Re-scan or wait for the next snapshot 
 
 ## Pagination And Asynchronous Data
 
-The latest and historical alerts endpoints document opaque cursor pagination. Pass the previous response's `endCursor` as `startAfterCursor` and stop only when `endCursor` is `null`. An empty `items` page is not a terminal condition; later pages can still exist.
+The latest and historical alerts endpoints document opaque cursor pagination. Pass the previous response's `endCursor` as `startAfterCursor` and stop only when `endCursor` is `null`. An empty `items` page is not a terminal condition; later pages can still exist. `--max-pages` accepts 1 through 1,000. The helper also caps the cumulative actual response bytes at 32 MiB (33,554,432 bytes), rejecting an overflow page before retaining any of its items, and tracks seen `endCursor` values so a repeated cursor fails before another request with the partial page count in the error.
 
 Other list endpoints may use different pagination shapes. Inspect the operation schema instead of forcing alert pagination onto every endpoint. The helper's `--paginate` is for the `items` plus `endCursor` shape and fails rather than guessing when a response differs.
 
@@ -118,6 +124,8 @@ Always preview and verify:
 - API-token creation, rotation, permission changes, or revocation.
 
 Require explicit reviewed scope for bulk selectors, org-wide policy changes, token operations, repository deletion, scan deletion, and webhook destinations. Prefer version-controlled repository configuration where Socket supports it.
+
+The helper gives each write exactly one network attempt regardless of `--retries`. A write that receives HTTP `408`, `429`, or any `5xx`, or fails with a transport error, reports the outcome as indeterminate and does not replay the request. Once a non-GET receives a successful HTTP status, failure to read the response, enforce its size bound, decode declared JSON, or accept a required nonempty response is also indeterminate because Socket may already have applied the write. That error retains the known HTTP status, closes the response, and requires re-reading the exact target before another write.
 
 ## CLI And Integration Notes
 

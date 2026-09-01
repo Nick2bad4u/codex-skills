@@ -39,6 +39,7 @@ Use `current workspace resources, reference links, conflict status, and fingerpr
 3. Keep secrets and user identifiers out of tags, variables, request URLs, logs, fixtures, and commits. Prefer GTM-supported secret handling and server-side controls.
 4. Maintain tag firing and blocking relationships, trigger filters, variable references, sequencing, consent requirements, zones, and environment constraints.
 5. Preview every write. The helper executes GET by default, but all non-GET requests remain dry runs until `--send` is supplied.
+6. Automatic retries apply only to `GET`. POST, PUT, PATCH, and DELETE receive exactly one attempt; after a retryable HTTP failure, URL error, or timeout, treat the outcome as indeterminate and verify GTM state before any manual retry.
 
 ## Resolve, version, and publish
 
@@ -46,7 +47,7 @@ Use `current workspace resources, reference links, conflict status, and fingerpr
 2. Resolve conflicts explicitly and re-read the changed resources and fingerprints.
 3. Run quick preview/compile checks and use Tag Assistant against the intended environment. Verify firing and non-firing cases, payloads, consent state, duplicates, and console/network errors.
 4. Creating a container version deletes the source workspace and moves the base version forward. Treat `create_version` as high impact and preserve the response version ID.
-5. Publish the reviewed version with its current fingerprint and an explicit confirmation. Check `compilerError` in the response even when the HTTP request succeeds.
+5. Publish the reviewed version with its current fingerprint and the helper's exact target-bound confirmation value. The helper exits nonzero for `compilerError`, synchronization errors, and unresolved sync conflicts even when the HTTP request succeeds; retain and inspect its redacted response.
 6. Re-read the live container version and exercise the deployed runtime. API success alone does not prove tag delivery or analytics ingestion.
 
 ## High-impact operations
@@ -60,7 +61,7 @@ Require explicit target and confirmation for:
 - changing environments, zones, destinations, custom templates, or server-container clients;
 - changing consent defaults or consent update behavior.
 
-The helper requires `--confirm <operation-id>` for publish, version creation, delete, and user-permission writes. Raw high-risk requests use `--confirm "METHOD /path"`.
+The helper requires the exact previewed `confirmationValue` for publish, version creation, delete, and user-permission writes. That value binds the operation ID when available, HTTP method, normalized path, encoded query, and a SHA-256 digest when a body is present. Copy it from the preview instead of constructing it manually. Raw high-risk requests without a query or body retain the shorter `METHOD /path` shape.
 
 ## Consent mode
 
@@ -73,6 +74,8 @@ The helper requires `--confirm <operation-id>` for publish, version creation, de
 ## Permissions and credentials
 
 - OAuth is required. The helper reads a short-lived access token from `GOOGLE_TAG_MANAGER_ACCESS_TOKEN`, falling back to `GTM_ACCESS_TOKEN`.
+- The resolved token is allowed only in the generated `Authorization` header. The helper rejects it if it appears in a path, query value, or request body and redacts it defensively from output metadata and transport errors.
+- The helper byte-bounds local/live Discovery, successful responses, error responses, and cumulative pagination. Unexpected non-JSON success text is omitted behind a fixed untrusted-data marker.
 - Never store access tokens, refresh tokens, OAuth client secrets, service-account keys, or authorization headers in the repository.
 - A service account must be explicitly granted access inside GTM; Google Cloud IAM alone does not grant container access.
 - Inventory user permissions before changing them and preserve at least one verified administrator path.
@@ -83,7 +86,7 @@ Return:
 
 - account/container/workspace/version IDs and environment;
 - current state, fingerprints, live-version baseline, and conflict status;
-- redacted request preview and required OAuth scopes;
+- redacted request preview and acceptable OAuth scopes, whose Discovery semantics are any-of;
 - test/preview evidence and firing/non-firing cases;
 - mutation response, compiler status, new version ID, and live-version verification;
 - pagination/quota bounds, unresolved conflicts, privacy risks, and rollback version.

@@ -122,6 +122,18 @@ python scripts/manage_uptimerobot.py request `
   --dry-run
 ```
 
+Repeat OpenAPI array-valued query parameters once per value. The current monitor-list operation declares `customField` as an array, while repeated scalar parameters are rejected:
+
+```powershell
+python scripts/manage_uptimerobot.py request `
+  --operation-id MonitorsController_list `
+  --query 'customField=environment:production' `
+  --query 'customField=team:platform' `
+  --dry-run
+```
+
+Raw requests preserve ordinary repeated query names in the supplied order because no OpenAPI parameter schema is available to classify them.
+
 Preview a raw endpoint mutation. The absence of `--send` keeps every non-GET request non-mutating:
 
 ```powershell
@@ -143,7 +155,7 @@ python scripts/manage_uptimerobot.py request /monitors/123456789 --method DELETE
   --send
 ```
 
-For an operation-based delete or bulk request, use the reported operation ID as the confirmation value. Never reuse a confirmation value for a different target.
+The confirmation phrase is generated only after the full plan is resolved. It includes the operation ID when available, HTTP method, normalized API-relative path, exact encoded query, and `body-sha256=<digest>` whenever a JSON body exists. Raw bulk bodies are included through the same canonical JSON SHA-256 digest. Copy the complete reported value; never reuse it after changing an operation, target, query pair, or body.
 
 For bounded collection traversal:
 
@@ -154,7 +166,30 @@ python scripts/manage_uptimerobot.py request /monitors `
   --max-pages 25
 ```
 
-The helper validates every `nextLink`, redacts sensitive fields, retries only safe reads, and rejects redirects.
+The helper validates every `nextLink`, requires the exact normalized collection endpoint path on every page, preserves repeated query/filter pairs while replacing advancing cursor values, rejects malformed, cross-collection, or repeated resolved links, redacts every emitted page URL/link/payload, retries only GET requests, and rejects redirects. Both configured keys must contain at least eight characters and are forbidden at token boundaries in request paths, queries, and JSON bodies in raw, percent-encoded, form-encoded, or repeatedly encoded form; the helper rechecks immediately before preview, transport, and each pagination request.
+
+Before building an authenticated opener, the transport repeats exact HTTPS origin and `/v3` confinement and rejects userinfo, explicit ports, fragments, controls, traversal, encoded structural path changes, and residual encodings. This applies to ordinary CLI plans and synthetic direct callers.
+
+`--body-json` and `--body-file` use strict UTF-8 JSON. Duplicate object keys are rejected rather than keeping the last value; `NaN`, infinity, and float overflow are invalid. Body files use a binary `limit + 1` read and are always closed, and the parsed tree is checked iteratively before atomic `allow_nan=False` encoding.
+
+Exact helper limits are:
+
+- 16 MiB for a local or remote OpenAPI document;
+- 2 MiB for request JSON source bytes and the final encoded body;
+- 64 request JSON container levels, 100,000 request value/container/object-key nodes, and 1,000,000 characters per request key/string;
+- 8 MiB for one successful API response;
+- 64 response JSON container levels, 250,000 response value/container/object-key nodes, and 4,194,304 characters per response key/string;
+- 16 KiB for one consumed, non-reflected error response body;
+- 32 MiB of cumulative paginated response bytes, checked before retaining the overflowing page;
+- 25 pages by default and at most 500 pages;
+- 2,000 retained characters for a non-JSON response and 1,000 redacted characters for a transport reason;
+- a timeout greater than zero and at most 300 seconds, plus zero through ten configured GET retries.
+
+Every stream is read with an actual `limit + 1` check and closed. `Content-Length` can reject an oversized response early but cannot authorize a missing, malformed, negative, or dishonest body size. `Retry-After` accepts standards-compliant non-negative integer delta-seconds or an HTTP-date relative to UTC and caps either at 60 seconds. Fractional extensions, absent/malformed values, non-finite/negative values, and invalid dates use exponential fallback capped at 30 seconds.
+
+POST, PUT, PATCH, and DELETE receive one attempt. Write-side HTTP `500`, `502`, `503`, and `504`, transport loss, and every post-attempt response-consumption failure are reported as indeterminate because the mutation may have succeeded. Direct responses and `HTTPError` bodies enforce size/read/protocol/incomplete-read safety; successful returned payloads additionally enforce UTF-8, strict JSON, and depth safety. Re-read the exact target before retrying manually. A write-side `4xx`, including `429`, is definitive only after its bounded response is consumed successfully.
+
+Output key names are classified after repeated percent/form decoding with semantic tokens and exact sensitive suffixes. UptimeRobot heartbeat/integration fields and known-provider callback capabilities remain redacted, while ordinary monitor URLs—including generic `/hooks/status` paths on ordinary hosts—and fields such as `tokenizationMode` remain visible.
 
 ## MCP setup
 

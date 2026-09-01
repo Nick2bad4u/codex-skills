@@ -112,11 +112,30 @@ def write_gtm_discovery(path: Path) -> None:
                         "httpMethod": "GET",
                         "description": "List accounts",
                         "parameters": {"pageToken": {"location": "query"}},
-                        "scopes": ["https://www.googleapis.com/auth/tagmanager.readonly"],
-                    }
+                        "scopes": [
+                            "https://www.googleapis.com/auth/tagmanager.edit.containers",
+                            "https://www.googleapis.com/auth/tagmanager.readonly",
+                        ],
+                    },
+                    "legacy": {
+                        "id": "tagmanager.accounts.legacy",
+                        "path": "tagmanager/v2/accounts",
+                        "httpMethod": "GET",
+                        "description": "Deprecated account operation",
+                        "deprecated": True,
+                    },
                 },
                 "resources": {
                     "containers": {
+                        "methods": {
+                            "list": {
+                                "id": "tagmanager.accounts.containers.list",
+                                "path": "tagmanager/v2/{+parent}/containers",
+                                "httpMethod": "GET",
+                                "parameters": {"parent": {"location": "path", "required": True}},
+                                "scopes": ["https://www.googleapis.com/auth/tagmanager.readonly"],
+                            }
+                        },
                         "resources": {
                             "workspaces": {
                                 "methods": {
@@ -170,7 +189,7 @@ def write_gtm_discovery(path: Path) -> None:
                                     }
                                 }
                             },
-                        }
+                        },
                     }
                 },
             }
@@ -326,6 +345,31 @@ def test_gtm_context_discovery_and_workspace_path(tmp_path: Path) -> None:
     assert operations_result.returncode == 0, operations_result.stderr
     operations = as_list(as_dict(json.loads(operations_result.stdout))["operations"])
     assert as_dict(operations[0])["operation_id"] == "tagmanager.accounts.containers.workspaces.getStatus"
+    assert as_dict(operations[0])["scope_semantics"] == "anyOf"
+    assert "scopes" in as_dict(operations[0])
+
+    deprecated_default = run_script(
+        GTM_SCRIPT,
+        "operations",
+        "--discovery-file",
+        str(discovery),
+        "--search",
+        "tagmanager.accounts.legacy",
+    )
+    assert deprecated_default.returncode == 0, deprecated_default.stderr
+    assert as_dict(json.loads(deprecated_default.stdout))["count"] == 0
+    deprecated_included = run_script(
+        GTM_SCRIPT,
+        "operations",
+        "--discovery-file",
+        str(discovery),
+        "--search",
+        "tagmanager.accounts.legacy",
+        "--include-deprecated",
+    )
+    assert deprecated_included.returncode == 0, deprecated_included.stderr
+    deprecated_operations = as_list(as_dict(json.loads(deprecated_included.stdout))["operations"])
+    assert as_dict(deprecated_operations[0])["deprecated"] is True
 
     preview_result = run_script(
         GTM_SCRIPT,
@@ -341,7 +385,46 @@ def test_gtm_context_discovery_and_workspace_path(tmp_path: Path) -> None:
     assert preview_result.returncode == 0, preview_result.stderr
     request = as_dict(as_dict(json.loads(preview_result.stdout))["request"])
     assert str(request["url"]).endswith("/accounts/1/containers/2/workspaces/3/status")
-    assert "tagmanager.readonly" in str(request["requiredScopes"])
+    assert "tagmanager.readonly" in str(request["acceptableScopes"])
+    assert request["scopeSemantics"] == "anyOf"
+
+    containers_preview = run_script(
+        GTM_SCRIPT,
+        "request",
+        "--discovery-file",
+        str(discovery),
+        "--operation-id",
+        "tagmanager.accounts.containers.list",
+        "--path",
+        "parent=accounts/123456",
+        "--dry-run",
+    )
+    assert containers_preview.returncode == 0, containers_preview.stderr
+    containers_request = as_dict(as_dict(json.loads(containers_preview.stdout))["request"])
+    assert str(containers_request["url"]).endswith("/accounts/123456/containers")
+
+    legacy_blocked = run_script(
+        GTM_SCRIPT,
+        "request",
+        "--discovery-file",
+        str(discovery),
+        "--operation-id",
+        "tagmanager.accounts.legacy",
+        "--dry-run",
+    )
+    assert legacy_blocked.returncode == 1
+    assert "deprecated" in legacy_blocked.stderr
+    legacy_allowed = run_script(
+        GTM_SCRIPT,
+        "request",
+        "--discovery-file",
+        str(discovery),
+        "--operation-id",
+        "tagmanager.accounts.legacy",
+        "--allow-deprecated",
+        "--dry-run",
+    )
+    assert legacy_allowed.returncode == 0, legacy_allowed.stderr
 
 
 def test_gtm_mutation_preview_confirmation_and_guards(tmp_path: Path) -> None:
@@ -369,6 +452,21 @@ def test_gtm_mutation_preview_confirmation_and_guards(tmp_path: Path) -> None:
     request = as_dict(as_dict(json.loads(preview_result.stdout))["request"])
     assert as_dict(request["body"])["clientSecret"] == REDACTED
 
+    missing_fingerprint = run_script(
+        GTM_SCRIPT,
+        "request",
+        "--discovery-file",
+        str(discovery),
+        "--operation-id",
+        "tagmanager.accounts.containers.workspaces.tags.update",
+        "--path",
+        "path=accounts/1/containers/2/workspaces/3/tags/4",
+        "--body-file",
+        str(tag_body),
+    )
+    assert missing_fingerprint.returncode == 1
+    assert "fingerprint" in missing_fingerprint.stderr
+
     publish_arguments = (
         "request",
         "--discovery-file",
@@ -384,7 +482,26 @@ def test_gtm_mutation_preview_confirmation_and_guards(tmp_path: Path) -> None:
     assert publish_preview.returncode == 0, publish_preview.stderr
     publish = as_dict(json.loads(publish_preview.stdout))
     assert publish["confirmationRequired"] is True
-    assert publish["confirmationValue"] == "tagmanager.accounts.containers.versions.publish"
+    confirmation = publish["confirmationValue"]
+    assert confirmation == (
+        "tagmanager.accounts.containers.versions.publish POST "
+        "/accounts/1/containers/2/versions/9:publish?fingerprint=abc123"
+    )
+
+    alternate_publish = run_script(
+        GTM_SCRIPT,
+        "request",
+        "--discovery-file",
+        str(discovery),
+        "--operation-id",
+        "tagmanager.accounts.containers.versions.publish",
+        "--path",
+        "path=accounts/1/containers/2/versions/10",
+        "--query",
+        "fingerprint=def456",
+    )
+    assert alternate_publish.returncode == 0, alternate_publish.stderr
+    assert as_dict(json.loads(alternate_publish.stdout))["confirmationValue"] != confirmation
 
     blocked_send = run_script(
         GTM_SCRIPT,
@@ -398,10 +515,45 @@ def test_gtm_mutation_preview_confirmation_and_guards(tmp_path: Path) -> None:
     assert "requires --confirm" in blocked_send.stderr
     assert TEST_CREDENTIAL not in blocked_send.stderr
 
+    page_token_preview = run_script(
+        GTM_SCRIPT,
+        "request",
+        "/accounts",
+        "--dry-run",
+        "--query",
+        "pageToken=page-2",
+    )
+    assert page_token_preview.returncode == 0, page_token_preview.stderr
+    page_token_url = str(as_dict(as_dict(json.loads(page_token_preview.stdout))["request"])["url"])
+    assert "pageToken=page-2" in page_token_url
+
+    incomplete_fields = run_script(
+        GTM_SCRIPT,
+        "request",
+        "/accounts",
+        "--dry-run",
+        "--paginate",
+        "--query",
+        "fields=account(accountId)",
+    )
+    assert incomplete_fields.returncode == 1
+    assert "nextPageToken" in incomplete_fields.stderr
+    complete_fields = run_script(
+        GTM_SCRIPT,
+        "request",
+        "/accounts",
+        "--dry-run",
+        "--paginate",
+        "--query",
+        "fields=nextPageToken,account(accountId)",
+    )
+    assert complete_fields.returncode == 0, complete_fields.stderr
+
     cases = (
         ("https://example.com/tagmanager/v2/accounts", "origin must match"),
         ("/../accounts", "path traversal"),
         ("/accounts", "credential-like query", "--query", "oauth_token=bad"),
+        ("/accounts/1/containers/2/versions/9%3Apublish", "percent-encoded", "--method", "POST"),
         ("relative", "Relative endpoint must start"),
     )
     for case in cases:
@@ -409,3 +561,8 @@ def test_gtm_mutation_preview_confirmation_and_guards(tmp_path: Path) -> None:
         result = run_script(GTM_SCRIPT, "request", endpoint, "--dry-run", *extra)
         assert result.returncode == 1
         assert expected in result.stderr
+
+    invalid_timeout = run_script(GTM_SCRIPT, "context", "--timeout", "NaN")
+    assert invalid_timeout.returncode == 1
+    assert "finite and greater than zero" in invalid_timeout.stderr
+    assert "Traceback" not in invalid_timeout.stderr

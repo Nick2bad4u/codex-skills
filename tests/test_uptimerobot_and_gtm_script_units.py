@@ -26,13 +26,24 @@ type JsonValue = bool | int | float | str | list[JsonValue] | dict[str, JsonValu
 class OperationView(Protocol):
     """Structural operation metadata used by pure unit assertions."""
 
+    deprecated: bool
     method: str
     operation_id: str
     path: str
 
 
-class RequestPlanView(Protocol):
-    """Structural request-plan view shared by both helper modules."""
+class UptimeRequestPlanView(Protocol):
+    """Structural UptimeRobot request-plan view."""
+
+    high_risk: bool
+    method: str
+    operation_id: str | None
+    query: tuple[tuple[str, str], ...]
+    url: str
+
+
+class GtmRequestPlanView(Protocol):
+    """Structural GTM request-plan view."""
 
     high_risk: bool
     method: str
@@ -40,6 +51,28 @@ class RequestPlanView(Protocol):
     query: dict[str, str]
     supports_page_token: bool
     url: str
+
+
+class PairParser(Protocol):
+    """Callable shape for helpers that label key-value arguments."""
+
+    def __call__(self, values: list[str], *, label: str) -> dict[str, str]:
+        """Parse labeled key-value arguments."""
+        ...
+
+
+class ExecutionModeValidator(Protocol):
+    """Callable shape for GTM execution-mode validation."""
+
+    def __call__(
+        self,
+        arguments: argparse.Namespace,
+        plan: GtmRequestPlanView,
+        *,
+        is_safe: bool,
+    ) -> None:
+        """Validate arguments against a resolved plan."""
+        ...
 
 
 def load_script_module(name: str, relative_path: str) -> ModuleType:
@@ -165,7 +198,7 @@ components:
         _ = fill_path("/monitors", {"id": "1"})
     base = "https://api.uptimerobot.com/v3"
     assert endpoint(base, "/monitors") == f"{base}/monitors"
-    assert next_url(base, f"{base}/monitors?limit=1", "?cursor=2").endswith("/monitors?cursor=2")
+    assert next_url(base, f"{base}/monitors?limit=1", "?cursor=2").endswith("/monitors?limit=1&cursor=2")
     assert next_url(base, f"{base}/monitors", "/v3/monitors?cursor=3").endswith("cursor=3")
     for value in ("/v3/../monitors", "https://example.com/v3/monitors", "/v3/monitors?token=bad"):
         with pytest.raises(helper_error):
@@ -240,6 +273,7 @@ def test_gtm_discovery_path_query_and_high_risk_validation() -> None:
         with pytest.raises(helper_error):
             _ = sanitize(value)
     method: dict[str, JsonValue] = {
+        "deprecated": True,
         "id": "tagmanager.accounts.containers.versions.publish",
         "path": "tagmanager/v2/{+path}:publish",
         "httpMethod": "POST",
@@ -249,9 +283,28 @@ def test_gtm_discovery_path_query_and_high_risk_validation() -> None:
     payload: dict[str, JsonValue] = {"resources": {"accounts": {"methods": {"publish": method}}}}
     operations = parse_operations(payload)
     assert operations[0].operation_id.endswith("publish")
+    assert operations[0].deprecated is True
     operation = parse_method(method)
     assert operation is not None
     assert high_risk(operation)
+    permission_read = parse_method(
+        {
+            "id": "tagmanager.accounts.user_permissions.list",
+            "path": "tagmanager/v2/{+parent}/user_permissions",
+            "httpMethod": "GET",
+        }
+    )
+    permission_write = parse_method(
+        {
+            "id": "tagmanager.accounts.user_permissions.update",
+            "path": "tagmanager/v2/{+path}",
+            "httpMethod": "PUT",
+        }
+    )
+    assert permission_read is not None
+    assert permission_write is not None
+    assert not high_risk(permission_read)
+    assert high_risk(permission_write)
     assert fill_path("tagmanager/v2/{+path}:publish", {"path": "accounts/1/containers/2/versions/3"}) == (
         "tagmanager/v2/accounts/1/containers/2/versions/3:publish"
     )
@@ -267,6 +320,7 @@ def test_gtm_json_redaction_pagination_and_bounds(monkeypatch: pytest.MonkeyPatc
     """Cover GTM token resolution, page tokens, JSON redaction, and safety bounds."""
     helper_error = error_type(GTM, "GoogleTagManagerCliError")
     resolve = cast("Callable[[list[str]], object | None]", function(GTM, "resolve_credential"))
+    parse_pairs = cast("PairParser", function(GTM, "parse_pairs"))
     redact = cast("Callable[[JsonValue, str | None], JsonValue]", function(GTM, "redact_json"))
     next_token = cast("Callable[[JsonValue], str | None]", function(GTM, "next_page_token"))
     response_payload = cast("Callable[[bytes, str], JsonValue]", function(GTM, "response_payload"))
@@ -275,6 +329,7 @@ def test_gtm_json_redaction_pagination_and_bounds(monkeypatch: pytest.MonkeyPatc
     assert resolve(["TEST_GTM"]) is not None
     with pytest.raises(helper_error, match="Invalid token environment"):
         _ = resolve(["bad-name"])
+    assert parse_pairs(["pageToken=page-2"], label="query") == {"pageToken": "page-2"}
     assert redact(
         {
             "clientSecret": "x",
@@ -288,12 +343,15 @@ def test_gtm_json_redaction_pagination_and_bounds(monkeypatch: pytest.MonkeyPatc
         "endpoint": "https://example.com/collect?access_token=<redacted>&event=view",
     }
     assert next_token({"nextPageToken": "page-2"}) == "page-2"
+    assert redact({"nextPageToken": "page-2"}, None) == {"nextPageToken": "page-2"}
     assert next_token({"nextPageToken": None}) is None
     assert response_payload(b'{"nextPageToken":"x"}', "application/json") == {"nextPageToken": "x"}
-    assert response_payload(b"plain", "text/plain") == "plain"
+    assert response_payload(b"plain", "text/plain") == "[untrusted-gtm-text] non-JSON response body omitted"
     validate(argparse.Namespace(timeout=1, retries=0, command="request", max_pages=500))
     for arguments in (
         argparse.Namespace(timeout=0, retries=0, command="context"),
+        argparse.Namespace(timeout=float("nan"), retries=0, command="context"),
+        argparse.Namespace(timeout=float("inf"), retries=0, command="context"),
         argparse.Namespace(timeout=1, retries=11, command="context"),
         argparse.Namespace(timeout=1, retries=0, command="request", max_pages=501),
     ):
@@ -331,6 +389,22 @@ def test_gtm_discovery_validation_and_operation_query() -> None:
     validate_query(operation, {"pageToken": "x", "fields": "account"})
     with pytest.raises(helper_error, match="Unknown query"):
         validate_query(operation, {"unknown": "x"})
+    update_operation = parse_method(
+        {
+            "id": "tagmanager.accounts.containers.workspaces.tags.update",
+            "path": "tagmanager/v2/{+path}",
+            "httpMethod": "PUT",
+            "parameters": {
+                "path": {"location": "path", "required": True},
+                "fingerprint": {"location": "query"},
+            },
+            "request": {"$ref": "Tag"},
+        }
+    )
+    assert update_operation is not None
+    with pytest.raises(helper_error, match="fingerprint"):
+        validate_query(update_operation, {})
+    validate_query(update_operation, {"fingerprint": "current"})
 
 
 def test_uptimerobot_execute_pagination_and_missing_credentials(
@@ -341,10 +415,10 @@ def test_uptimerobot_execute_pagination_and_missing_credentials(
     helper_error = error_type(UPTIMEROBOT, "UptimeRobotCliError")
     context_type = cast("Callable[..., object]", function(UPTIMEROBOT, "UptimeRobotContext"))
     credential_type = cast("Callable[..., object]", function(UPTIMEROBOT, "Credential"))
-    plan_type = cast("Callable[..., RequestPlanView]", function(UPTIMEROBOT, "RequestPlan"))
+    plan_type = cast("Callable[..., UptimeRequestPlanView]", function(UPTIMEROBOT, "RequestPlan"))
     result_type = cast("Callable[..., object]", function(UPTIMEROBOT, "ApiResult"))
     execute = cast(
-        "Callable[[argparse.Namespace, object, RequestPlanView], None]",
+        "Callable[[argparse.Namespace, object, UptimeRequestPlanView], None]",
         function(UPTIMEROBOT, "execute_plan"),
     )
     credential = credential_type(environment="TEST_READ", value="credential")
@@ -360,7 +434,7 @@ def test_uptimerobot_execute_pagination_and_missing_credentials(
         high_risk=False,
         method="GET",
         operation_id="MonitorsController_list",
-        query={"limit": "1"},
+        query=(("limit", "1"),),
         url="https://api.uptimerobot.com/v3/monitors",
     )
     responses = iter(
@@ -378,7 +452,7 @@ def test_uptimerobot_execute_pagination_and_missing_credentials(
         )
     )
 
-    def fake_send(*_arguments: object) -> object:
+    def fake_send(*_arguments: object, **_keyword_arguments: object) -> object:
         return next(responses)
 
     monkeypatch.setattr(UPTIMEROBOT, "send_request", fake_send)
@@ -404,7 +478,7 @@ def test_uptimerobot_execute_pagination_and_missing_credentials(
         high_risk=True,
         method="DELETE",
         operation_id=None,
-        query={},
+        query=(),
         url="https://api.uptimerobot.com/v3/monitors/42",
     )
     delete_arguments = argparse.Namespace(send=True, dry_run=False, paginate=False, confirm=None)
@@ -423,7 +497,7 @@ def test_uptimerobot_execute_pagination_and_missing_credentials(
         spec_url="https://cdn.uptimerobot.com/api/openapi.yaml",
     )
 
-    def fake_delete_send(*_arguments: object) -> object:
+    def fake_delete_send(*_arguments: object, **_keyword_arguments: object) -> object:
         return result_type(
             payload={"deleted": True},
             status=200,
@@ -458,11 +532,16 @@ def test_gtm_execute_pagination_and_confirmation(
     helper_error = error_type(GTM, "GoogleTagManagerCliError")
     context_type = cast("Callable[..., object]", function(GTM, "GoogleTagManagerContext"))
     credential_type = cast("Callable[..., object]", function(GTM, "Credential"))
-    plan_type = cast("Callable[..., RequestPlanView]", function(GTM, "RequestPlan"))
+    plan_type = cast("Callable[..., GtmRequestPlanView]", function(GTM, "RequestPlan"))
     result_type = cast("Callable[..., object]", function(GTM, "ApiResult"))
     execute = cast(
-        "Callable[[argparse.Namespace, object, RequestPlanView], None]",
+        "Callable[[argparse.Namespace, object, GtmRequestPlanView], None]",
         function(GTM, "execute_plan"),
+    )
+    validate_mode = cast("ExecutionModeValidator", function(GTM, "validate_execution_mode"))
+    validate_semantics = cast(
+        "Callable[[GtmRequestPlanView, object], None]",
+        function(GTM, "validate_result_semantics"),
     )
     credential = credential_type(environment="TEST_GTM", value="credential")
     context = context_type(
@@ -477,7 +556,7 @@ def test_gtm_execute_pagination_and_confirmation(
         method="GET",
         operation_id="tagmanager.accounts.list",
         query={},
-        required_scopes=("readonly",),
+        acceptable_scopes=("readonly",),
         supports_page_token=True,
         url="https://tagmanager.googleapis.com/tagmanager/v2/accounts",
     )
@@ -504,17 +583,67 @@ def test_gtm_execute_pagination_and_confirmation(
     assert output["complete"] is True
     assert output["pageCount"] == EXPECTED_PAGE_COUNT
 
+    filtered_plan = plan_type(
+        body=None,
+        confirmation_value=None,
+        high_risk=False,
+        method="GET",
+        operation_id="tagmanager.accounts.list",
+        query={"fields": "account(accountId)"},
+        acceptable_scopes=("readonly",),
+        supports_page_token=True,
+        url="https://tagmanager.googleapis.com/tagmanager/v2/accounts",
+    )
+    pagination_arguments = argparse.Namespace(send=False, dry_run=True, paginate=True)
+    with pytest.raises(helper_error, match="nextPageToken"):
+        validate_mode(pagination_arguments, filtered_plan, is_safe=True)
+    complete_filtered_plan = plan_type(
+        body=None,
+        confirmation_value=None,
+        high_risk=False,
+        method="GET",
+        operation_id="tagmanager.accounts.list",
+        query={"fields": "nextPageToken,account(accountId)"},
+        acceptable_scopes=("readonly",),
+        supports_page_token=True,
+        url="https://tagmanager.googleapis.com/tagmanager/v2/accounts",
+    )
+    validate_mode(pagination_arguments, complete_filtered_plan, is_safe=True)
+
+    publish_confirmation = (
+        "tagmanager.accounts.containers.versions.publish POST "
+        "/accounts/1/containers/2/versions/3:publish?fingerprint=current"
+    )
     publish_plan = plan_type(
         body=None,
-        confirmation_value="tagmanager.accounts.containers.versions.publish",
+        confirmation_value=publish_confirmation,
         high_risk=True,
         method="POST",
         operation_id="tagmanager.accounts.containers.versions.publish",
-        query={},
-        required_scopes=("publish",),
+        query={"fingerprint": "current"},
+        acceptable_scopes=("publish",),
         supports_page_token=False,
         url="https://tagmanager.googleapis.com/tagmanager/v2/accounts/1/containers/2/versions/3:publish",
     )
     publish_arguments = argparse.Namespace(send=True, dry_run=False, paginate=False, confirm=None)
     with pytest.raises(helper_error, match="requires --confirm"):
         _ = execute(publish_arguments, context, publish_plan)
+
+    def fake_compiler_error(*_arguments: object) -> object:
+        return result_type(payload={"compilerError": True}, status=200, url=publish_plan.url)
+
+    monkeypatch.setattr(GTM, "send_request", fake_compiler_error)
+    confirmed_arguments = argparse.Namespace(
+        send=True,
+        dry_run=False,
+        paginate=False,
+        confirm=publish_confirmation,
+    )
+    with pytest.raises(helper_error, match="compilerError=true"):
+        _ = execute(confirmed_arguments, context, publish_plan)
+    assert json_from_capture(capsys)["status"] == HTTP_OK
+    with pytest.raises(helper_error, match=r"syncStatus\.syncError=true"):
+        validate_semantics(
+            publish_plan,
+            result_type(payload={"syncStatus": {"syncError": True}}, status=200, url=publish_plan.url),
+        )

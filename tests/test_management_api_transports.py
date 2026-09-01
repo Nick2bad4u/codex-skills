@@ -54,6 +54,16 @@ class FakeResponse:
         self.payload = payload
         self.status = status
         self.headers = http_headers(headers or {})
+        self._closed = False
+
+    @property
+    def closed(self) -> bool:
+        """Return whether the response has been closed."""
+        return self._closed
+
+    def close(self) -> None:
+        """Close the response idempotently like a real urllib response."""
+        self._closed = True
 
     def __enter__(self) -> Self:
         """Enter a urllib-style response context."""
@@ -67,9 +77,12 @@ class FakeResponse:
     ) -> None:
         """Leave a urllib-style response context without suppressing errors."""
         del exception_type, exception, traceback
+        self.close()
 
     def read(self, amount: int | None = None) -> bytes:
         """Return the configured payload, respecting an optional byte bound."""
+        if self.closed:
+            raise ValueError("I/O operation on closed response.")
         return self.payload if amount is None else self.payload[:amount]
 
 
@@ -594,15 +607,16 @@ def test_stepsecurity_transport_validates_redirects_retries_and_redacts(monkeypa
     send = cast("Callable[..., object]", function(STEPSECURITY, "send"))
     helper_error = cast("type[Exception]", function(STEPSECURITY, "StepSecurityError"))
     url = "https://agent.api.stepsecurity.io/v1/detections"
+    success_response = FakeResponse(
+        f'{{"data":[],"token":"{TEST_CREDENTIAL}"}}'.encode(),
+        headers={"Content-Type": "application/json", "X-Request-Id": "fixture-request"},
+    )
     opener = install_opener(
         monkeypatch,
         [
             http_failure(url, 302, headers={"Location": "/v1/detections?page=2"}),
             http_failure(url, HTTP_TOO_MANY_REQUESTS, headers={"Retry-After": "0"}),
-            FakeResponse(
-                f'{{"data":[],"token":"{TEST_CREDENTIAL}"}}'.encode(),
-                headers={"Content-Type": "application/json", "X-Request-Id": "fixture-request"},
-            ),
+            success_response,
         ],
     )
     delays = record_sleeps(monkeypatch)
@@ -617,6 +631,7 @@ def test_stepsecurity_transport_validates_redirects_retries_and_redacts(monkeypa
     assert payload == {"data": [], "token": "<redacted>"}
     assert delays == [0.0]
     assert [item.full_url for item in opener.requests] == [url, f"{url}?page=2", f"{url}?page=2"]
+    assert success_response.closed
 
     _ = install_opener(monkeypatch, [error.URLError("offline")])
     with pytest.raises(helper_error, match="offline"):
@@ -645,14 +660,15 @@ def test_uptimerobot_transport_retries_and_fails_closed(monkeypatch: pytest.Monk
         high_risk=False,
         method="GET",
         operation_id="MonitorsController_list",
-        query={},
+        query=(),
         url=url,
     )
+    success_response = FakeResponse(b'{"data":[]}', headers={"Content-Type": "application/json"})
     opener = install_opener(
         monkeypatch,
         [
             http_failure(url, HTTP_TOO_MANY_REQUESTS, headers={"Retry-After": "0"}),
-            FakeResponse(b'{"data":[]}', headers={"Content-Type": "application/json"}),
+            success_response,
         ],
     )
     delays = record_sleeps(monkeypatch)
@@ -660,6 +676,7 @@ def test_uptimerobot_transport_retries_and_fails_closed(monkeypatch: pytest.Monk
     result = cast("ApiResultView", send(plan, url, credential, argparse.Namespace(retries=1, timeout=1.0)))
     assert result.payload == {"data": []}
     assert delays == [0.0]
+    assert success_response.closed
     assert opener.requests[0].get_header("Authorization") == f"Bearer {TEST_CREDENTIAL}"
     assert response_payload(b"", "application/json") is None
     with pytest.raises(helper_error, match="Expected JSON"):
@@ -693,7 +710,7 @@ def test_gtm_transport_retries_sends_json_and_fails_closed(monkeypatch: pytest.M
         method="GET",
         operation_id="tagmanager.accounts.list",
         query={},
-        required_scopes=("readonly",),
+        acceptable_scopes=("readonly",),
         supports_page_token=True,
         url=url,
     )
@@ -721,7 +738,7 @@ def test_gtm_transport_retries_sends_json_and_fails_closed(monkeypatch: pytest.M
         method="POST",
         operation_id="tagmanager.accounts.create",
         query={},
-        required_scopes=("edit",),
+        acceptable_scopes=("edit",),
         supports_page_token=False,
         url=url,
     )

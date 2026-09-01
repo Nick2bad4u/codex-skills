@@ -5,18 +5,20 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
+import math
 import os
 import re
 import sys
 import time
 from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, cast, override
+from typing import TYPE_CHECKING, NoReturn, cast, override
 from urllib import error, parse, request
 
 if TYPE_CHECKING:
-    from http.client import HTTPMessage
+    from http.client import HTTPMessage, HTTPResponse
     from typing import IO
 
 type JsonValue = bool | int | float | str | list[JsonValue] | dict[str, JsonValue] | None
@@ -31,15 +33,20 @@ DEFAULT_TIMEOUT = 30.0
 DEFAULT_RETRIES = 2
 DEFAULT_MAX_PAGES = 25
 MAX_MAX_PAGES = 500
-MAX_RESPONSE_TEXT = 2000
+MAX_DISCOVERY_DOCUMENT_BYTES = 16 * 1024 * 1024
+MAX_API_RESPONSE_BYTES = 8 * 1024 * 1024
+MAX_ERROR_RESPONSE_BYTES = 16 * 1024
+MAX_PAGINATED_RESPONSE_BYTES = 32 * 1024 * 1024
 JSON_MEDIA_TYPE = "application/json"
 REDACTED_VALUE = "<redacted>"
+UNTRUSTED_NON_JSON_RESPONSE = "[untrusted-gtm-text] non-JSON response body omitted"
 HTTP_SUCCESS_MIN = 200
 HTTP_SUCCESS_LIMIT = 300
 RETRYABLE_STATUS_CODES = frozenset({429, 500, 502, 503, 504})
-SAFE_METHODS = frozenset({"GET", "HEAD"})
 HTTP_METHODS = ("GET", "POST", "PUT", "PATCH", "DELETE")
 GLOBAL_QUERY_PARAMETERS = frozenset({"alt", "fields", "prettyPrint", "quotaUser"})
+PAGINATION_KEY_NAMES = frozenset({"nextpagetoken", "pagetoken"})
+SCOPE_SEMANTICS = "anyOf"
 PATH_PARAMETER = re.compile(r"\{(\+?)([^{}]+)\}")
 SENSITIVE_KEY_MARKERS = (
     "accesstoken",
@@ -108,12 +115,14 @@ class OperationParameter:
 class DiscoveryOperation:
     """Small stable view of one Discovery API method."""
 
+    deprecated: bool
     description: str
     has_request_body: bool
     method: str
     operation_id: str
     parameters: tuple[OperationParameter, ...]
     path: str
+    scope_semantics: str
     scopes: tuple[str, ...]
 
 
@@ -127,7 +136,7 @@ class RequestPlan:
     method: str
     operation_id: str | None
     query: dict[str, str]
-    required_scopes: tuple[str, ...]
+    acceptable_scopes: tuple[str, ...]
     supports_page_token: bool
     url: str
 
@@ -136,12 +145,11 @@ class RequestPlan:
 class ResolvedRequestTarget:
     """Endpoint, scope, pagination, and risk metadata for one request."""
 
-    confirmation_value: str | None
     endpoint: str
     high_risk: bool
     method: str
     operation_id: str | None
-    required_scopes: tuple[str, ...]
+    acceptable_scopes: tuple[str, ...]
     supports_page_token: bool
 
 
@@ -152,6 +160,7 @@ class ApiResult:
     payload: JsonValue
     status: int
     url: str
+    response_bytes: int = 0
 
 
 def optional_text(value: object) -> str | None:
@@ -165,12 +174,19 @@ def optional_text(value: object) -> str | None:
 def is_sensitive_key(value: str) -> bool:
     """Recognize credential-like field names without a backtracking regex."""
     normalized = value.casefold().replace("-", "").replace("_", "")
+    if normalized in PAGINATION_KEY_NAMES:
+        return False
     return any(marker in normalized for marker in SENSITIVE_KEY_MARKERS)
 
 
 def as_string_list(value: object) -> list[str]:
     """Narrow parser-controlled repeatable string arguments."""
     return cast("list[str]", value)
+
+
+def method_is_get(method: str) -> bool:
+    """Return whether automatic replay and read-only execution are allowed."""
+    return method == "GET"
 
 
 def is_environment_name(value: str) -> bool:
@@ -251,12 +267,28 @@ def context_payload(context: GoogleTagManagerContext) -> dict[str, JsonValue]:
     }
 
 
+def reject_non_json_constant(_value: str) -> NoReturn:
+    """Reject Python's non-standard NaN and infinity JSON extensions."""
+    raise ValueError("Non-finite numbers are not valid JSON.")
+
+
+def strict_json_value(text: str, *, source: str) -> JsonValue:
+    """Decode one standards-compliant JSON value."""
+    try:
+        return cast("JsonValue", json.loads(text, parse_constant=reject_non_json_constant))
+    except (json.JSONDecodeError, ValueError) as exception:
+        raise GoogleTagManagerCliError(
+            f"Expected JSON from {source}; values must be standards-compliant."
+        ) from exception
+
+
 def decode_json(data: bytes, *, source: str) -> dict[str, JsonValue]:
     """Decode a UTF-8 JSON object with a bounded error."""
     try:
-        payload = cast("JsonValue", json.loads(data.decode("utf-8")))
-    except (UnicodeDecodeError, json.JSONDecodeError) as exception:
+        text = data.decode("utf-8")
+    except UnicodeDecodeError as exception:
         raise GoogleTagManagerCliError(f"Expected JSON from {source}.") from exception
+    payload = strict_json_value(text, source=source)
     if not isinstance(payload, dict):
         raise GoogleTagManagerCliError(f"Expected a JSON object from {source}.")
     return payload
@@ -270,12 +302,41 @@ def validate_discovery_document(payload: dict[str, JsonValue]) -> None:
         raise GoogleTagManagerCliError("Discovery document does not contain a resources object.")
 
 
+def read_bounded_stream(stream: IO[bytes], *, max_bytes: int, label: str) -> bytes:
+    """Read through the configured byte boundary and reject one byte beyond it."""
+    data = stream.read(max_bytes + 1)
+    if len(data) > max_bytes:
+        raise GoogleTagManagerCliError(f"{label} exceeds the {max_bytes}-byte safety limit.")
+    return data
+
+
+def read_bounded_response(response: HTTPResponse | error.HTTPError, *, max_bytes: int, label: str) -> bytes:
+    """Use a trustworthy length as an early check and enforce the actual bytes read."""
+    declared_length = response.headers.get("Content-Length")
+    if declared_length is not None:
+        normalized_length = declared_length.strip()
+        if normalized_length.isascii() and normalized_length.isdecimal():
+            try:
+                parsed_length = int(normalized_length)
+            except ValueError:
+                parsed_length = None
+            if parsed_length is not None and parsed_length > max_bytes:
+                raise GoogleTagManagerCliError(f"{label} exceeds the {max_bytes}-byte safety limit.")
+    return read_bounded_stream(response, max_bytes=max_bytes, label=label)
+
+
 def load_discovery(arguments: argparse.Namespace, context: GoogleTagManagerContext) -> dict[str, JsonValue]:
     """Load a local or live Tag Manager Discovery document."""
     discovery_file = cast("Path | None", arguments.discovery_file)
     if discovery_file is not None:
         try:
-            payload = decode_json(discovery_file.read_bytes(), source=str(discovery_file))
+            with discovery_file.open("rb") as stream:
+                document = read_bounded_stream(
+                    stream,
+                    max_bytes=MAX_DISCOVERY_DOCUMENT_BYTES,
+                    label="Tag Manager Discovery document",
+                )
+            payload = decode_json(document, source=str(discovery_file))
         except OSError as exception:
             raise GoogleTagManagerCliError(f"Could not read Discovery file: {discovery_file}") from exception
     else:
@@ -286,10 +347,18 @@ def load_discovery(arguments: argparse.Namespace, context: GoogleTagManagerConte
         )
         try:
             with opener.open(discovery_request, timeout=float(arguments.timeout)) as response:
-                payload = decode_json(response.read(), source=context.discovery_url)
+                document = read_bounded_response(
+                    response,
+                    max_bytes=MAX_DISCOVERY_DOCUMENT_BYTES,
+                    label="Tag Manager Discovery response",
+                )
+                payload = decode_json(document, source=context.discovery_url)
         except error.HTTPError as exception:
             try:
-                raise GoogleTagManagerCliError(f"Discovery request failed with HTTP {exception.code}.") from exception
+                details = read_error_body(exception, None)
+                raise GoogleTagManagerCliError(
+                    f"Discovery request failed with HTTP {exception.code}: {details}"
+                ) from exception
             finally:
                 exception.close()
         except error.URLError as exception:
@@ -317,6 +386,9 @@ def parse_method(value: JsonValue) -> DiscoveryOperation | None:
     method = value.get("httpMethod")
     if not all(isinstance(item, str) and item for item in (operation_id, path, method)):
         return None
+    normalized_method = cast("str", method).upper()
+    if normalized_method not in HTTP_METHODS:
+        raise GoogleTagManagerCliError(f"Unsupported Discovery HTTP method: {normalized_method}")
     parameters_value = value.get("parameters")
     parameters: list[OperationParameter] = []
     if isinstance(parameters_value, dict):
@@ -327,12 +399,14 @@ def parse_method(value: JsonValue) -> DiscoveryOperation | None:
     scopes_value = value.get("scopes")
     description = value.get("description")
     return DiscoveryOperation(
+        deprecated=value.get("deprecated") is True,
         description=description if isinstance(description, str) else "",
         has_request_body=isinstance(value.get("request"), dict),
-        method=cast("str", method).upper(),
+        method=normalized_method,
         operation_id=cast("str", operation_id),
         parameters=tuple(sorted(parameters, key=lambda item: (item.location, item.name))),
         path=cast("str", path),
+        scope_semantics=SCOPE_SEMANTICS,
         scopes=tuple(item for item in scopes_value if isinstance(item, str)) if isinstance(scopes_value, list) else (),
     )
 
@@ -397,10 +471,7 @@ def load_body(arguments: argparse.Namespace) -> JsonValue:
             raise GoogleTagManagerCliError(f"Could not read request body file: {body_file}") from exception
     if body_text is None:
         return None
-    try:
-        return cast("JsonValue", json.loads(body_text))
-    except json.JSONDecodeError as exception:
-        raise GoogleTagManagerCliError("Request body must be valid JSON.") from exception
+    return strict_json_value(body_text, source="the request body")
 
 
 def operation_by_id(operations: list[DiscoveryOperation], operation_id: str) -> DiscoveryOperation:
@@ -472,11 +543,16 @@ def validated_endpoint_url(base_url: str, endpoint: str) -> str:
 
 
 def validate_operation_query(operation: DiscoveryOperation, query: dict[str, str]) -> None:
-    """Reject query names absent from the live Discovery method."""
+    """Reject undocumented query names and unguarded concurrency-sensitive writes."""
     allowed = {item.name for item in operation.parameters if item.location == "query"} | set(GLOBAL_QUERY_PARAMETERS)
     unknown = sorted(set(query) - allowed)
     if unknown:
         raise GoogleTagManagerCliError(f"Unknown query parameter(s) for operation: {', '.join(unknown)}")
+    supports_fingerprint = any(item.location == "query" and item.name == "fingerprint" for item in operation.parameters)
+    if not method_is_get(operation.method) and supports_fingerprint and "fingerprint" not in query:
+        raise GoogleTagManagerCliError(
+            "Mutation requires --query fingerprint=<current fingerprint> for optimistic concurrency."
+        )
 
 
 def operation_is_high_risk(operation: DiscoveryOperation) -> bool:
@@ -485,14 +561,30 @@ def operation_is_high_risk(operation: DiscoveryOperation) -> bool:
     return (
         operation.method == "DELETE"
         or operation_id.endswith((".publish", ".create_version"))
-        or ".user_permissions." in operation_id
+        or (not method_is_get(operation.method) and ".user_permissions." in operation_id)
     )
 
 
-def raw_confirmation_value(method: str, url: str) -> str:
-    """Build the exact confirmation phrase for a raw high-risk request."""
-    path = parse.urlsplit(url).path.removeprefix(API_BASE_PATH) or "/"
-    return f"{method} {path}"
+def confirmation_value(method: str, url: str, body: JsonValue, operation_id: str | None) -> str:
+    """Bind a high-impact confirmation to the exact operation, target, query, and body."""
+    parsed = parse.urlsplit(url)
+    path = parsed.path.removeprefix(API_BASE_PATH) or "/"
+    target = parse.urlunsplit(("", "", path, parsed.query, ""))
+    prefix = f"{operation_id} " if operation_id is not None else ""
+    value = f"{prefix}{method} {target}"
+    if body is None:
+        return value
+    try:
+        canonical_body = json.dumps(
+            body,
+            allow_nan=False,
+            ensure_ascii=False,
+            separators=(",", ":"),
+            sort_keys=True,
+        ).encode()
+    except ValueError as exception:
+        raise GoogleTagManagerCliError("Request body must contain only finite JSON numbers.") from exception
+    return f"{value} body-sha256={hashlib.sha256(canonical_body).hexdigest()}"
 
 
 def validate_operation_body(operation: DiscoveryOperation, body: JsonValue) -> None:
@@ -522,29 +614,34 @@ def resolve_request_target(
     if operation_id is None:
         if path_values:
             raise GoogleTagManagerCliError("--path requires --operation-id.")
+        normalized_method = (requested_method or "GET").upper()
+        if normalized_method not in HTTP_METHODS:
+            raise GoogleTagManagerCliError(f"Unsupported HTTP method: {normalized_method}")
         return ResolvedRequestTarget(
-            confirmation_value=None,
             endpoint=cast("str", endpoint),
             high_risk=False,
-            method=(requested_method or "GET").upper(),
+            method=normalized_method,
             operation_id=None,
-            required_scopes=(),
+            acceptable_scopes=(),
             supports_page_token=True,
         )
 
     operation = operation_by_id(load_operations(arguments, context), operation_id)
+    if operation.deprecated and not bool(arguments.allow_deprecated):
+        raise GoogleTagManagerCliError(
+            "Discovery operation is deprecated; pass --allow-deprecated only after reviewing its replacement."
+        )
     if requested_method is not None and requested_method.upper() != operation.method:
         raise GoogleTagManagerCliError("--method conflicts with the Discovery operation.")
     validate_operation_query(operation, query)
     validate_operation_body(operation, body)
     high_risk = operation_is_high_risk(operation)
     return ResolvedRequestTarget(
-        confirmation_value=operation.operation_id if high_risk else None,
         endpoint=fill_path(operation.path, parse_pairs(path_values, label="path")),
         high_risk=high_risk,
         method=operation.method,
         operation_id=operation_id,
-        required_scopes=operation.scopes,
+        acceptable_scopes=operation.scopes,
         supports_page_token=any(item.location == "query" and item.name == "pageToken" for item in operation.parameters),
     )
 
@@ -554,24 +651,31 @@ def build_plan(arguments: argparse.Namespace, context: GoogleTagManagerContext) 
     query = parse_pairs(as_string_list(arguments.query), label="query")
     body = load_body(arguments)
     target = resolve_request_target(arguments, context, query, body)
-    if target.method in SAFE_METHODS and body is not None:
+    if target.method not in HTTP_METHODS:
+        raise GoogleTagManagerCliError(f"Unsupported HTTP method: {target.method}")
+    if method_is_get(target.method) and body is not None:
         raise GoogleTagManagerCliError(f"{target.method} requests must not include a body.")
     url = validated_endpoint_url(context.base_url, target.endpoint)
     high_risk = target.high_risk
-    confirmation_value = target.confirmation_value
     if target.operation_id is None:
-        raw_path = parse.urlsplit(url).path.casefold()
+        raw_path_value = parse.urlsplit(url).path
+        if parse.unquote(raw_path_value) != raw_path_value:
+            raise GoogleTagManagerCliError("Raw endpoint paths must not contain percent-encoded characters.")
+        raw_path = raw_path_value.casefold()
         high_risk = target.method == "DELETE" or ":publish" in raw_path or ":create_version" in raw_path
-        high_risk = high_risk or "/user_permissions" in raw_path
-        confirmation_value = raw_confirmation_value(target.method, url) if high_risk else None
+        high_risk = high_risk or (not method_is_get(target.method) and "/user_permissions" in raw_path)
+    encoded_url = encode_url(url, query)
+    reject_credential_reuse(context.credential, body, encoded_url)
     return RequestPlan(
         body=body,
-        confirmation_value=confirmation_value,
+        confirmation_value=(
+            confirmation_value(target.method, encoded_url, body, target.operation_id) if high_risk else None
+        ),
         high_risk=high_risk,
         method=target.method,
         operation_id=target.operation_id,
         query=query,
-        required_scopes=target.required_scopes,
+        acceptable_scopes=target.acceptable_scopes,
         supports_page_token=target.supports_page_token,
         url=url,
     )
@@ -614,6 +718,45 @@ def redact_json(value: JsonValue, secret: str | None = None) -> JsonValue:
     return value
 
 
+def json_contains_secret(value: JsonValue, secret: str) -> bool:
+    """Return whether a JSON value contains the resolved OAuth credential."""
+    if isinstance(value, dict):
+        return any(json_contains_secret(item, secret) for item in value.values())
+    if isinstance(value, list):
+        return any(json_contains_secret(item, secret) for item in value)
+    return isinstance(value, str) and secret in value
+
+
+def text_contains_secret(value: str, secret: str) -> bool:
+    """Recognize a credential in plain or URL-encoded text."""
+    return secret in value or secret in parse.unquote_plus(value)
+
+
+def reject_credential_reuse(credential: Credential | None, body: JsonValue, url: str) -> None:
+    """Keep the resolved OAuth credential exclusively in the Authorization header."""
+    if credential is None:
+        return
+    if json_contains_secret(body, credential.value) or text_contains_secret(url, credential.value):
+        allowed_location = "the generated Authorization header"
+        forbidden_locations = "a path, query parameter, or request body"
+        raise GoogleTagManagerCliError(
+            f"Resolved OAuth credential may appear only in {allowed_location}, not in {forbidden_locations}."
+        )
+
+
+def redact_known_secret(value: str | None, secret: str | None) -> str | None:
+    """Redact a known credential from plain and URL-encoded output text."""
+    if value is None:
+        return None
+    result = redact_url_secrets(value)
+    if not secret:
+        return result
+    variants = {secret, parse.quote(secret, safe=""), parse.quote_plus(secret, safe="")}
+    for variant in sorted(variants, key=len, reverse=True):
+        result = result.replace(variant, REDACTED_VALUE)
+    return result
+
+
 def encode_url(url: str, query: dict[str, str]) -> str:
     """Append encoded query parameters to a validated URL."""
     parsed = parse.urlsplit(url)
@@ -621,24 +764,70 @@ def encode_url(url: str, query: dict[str, str]) -> str:
 
 
 def response_payload(data: bytes, content_type: str) -> JsonValue:
-    """Decode JSON or retain bounded external text."""
+    """Decode strict JSON without ever echoing an unexpected non-JSON body."""
     if not data:
         return None
     if "json" in content_type.lower():
         try:
-            return cast("JsonValue", json.loads(data.decode("utf-8")))
-        except (UnicodeDecodeError, json.JSONDecodeError) as exception:
+            text = data.decode("utf-8")
+        except UnicodeDecodeError as exception:
             raise GoogleTagManagerCliError("Expected JSON from the Tag Manager API.") from exception
-    return data.decode("utf-8", errors="replace")[:MAX_RESPONSE_TEXT]
+        return strict_json_value(text, source="the Tag Manager API")
+    return UNTRUSTED_NON_JSON_RESPONSE
+
+
+def read_error_body(http_error: error.HTTPError, secret: str | None) -> str:
+    """Read one bounded HTTP error body and return only JSON-safe or fixed text."""
+    data = read_bounded_response(
+        http_error,
+        max_bytes=MAX_ERROR_RESPONSE_BYTES,
+        label="Tag Manager error response",
+    )
+    if not data:
+        return "[untrusted-gtm-text] error response body omitted"
+    try:
+        payload = response_payload(data, http_error.headers.get("Content-Type", ""))
+    except GoogleTagManagerCliError:
+        return "[untrusted-gtm-text] non-JSON error response body omitted"
+    if payload == UNTRUSTED_NON_JSON_RESPONSE:
+        return "[untrusted-gtm-text] non-JSON error response body omitted"
+    return json.dumps(redact_json(payload, secret), allow_nan=False, separators=(",", ":"), sort_keys=True)
 
 
 def retry_delay(http_error: error.HTTPError, attempt: int) -> float:
     """Return a bounded Retry-After or exponential fallback delay."""
+    fallback = min(2.0**attempt, 30.0)
     value = http_error.headers.get("Retry-After", "").strip()
+    if not value:
+        return fallback
     try:
-        return min(max(float(value), 0.0), 60.0) if value else min(2.0**attempt, 30.0)
+        delay = float(value)
     except ValueError:
-        return min(2.0**attempt, 30.0)
+        return fallback
+    return min(delay, 60.0) if math.isfinite(delay) and delay >= 0 else fallback
+
+
+def transport_retry_delay(attempt: int) -> float:
+    """Return bounded exponential delay for a GET transport failure."""
+    return min(2.0**attempt, 30.0)
+
+
+def indeterminate_write_guidance(method: str) -> str:
+    """Explain the required recovery after an ambiguous write failure."""
+    if method_is_get(method):
+        return ""
+    return (
+        f"The {method} request was attempted exactly once and was not automatically retried. "
+        "It may have taken effect, so its outcome is indeterminate. Verify current Google Tag Manager state "
+        "before retrying manually."
+    )
+
+
+def safe_transport_reason(reason: object, secret: str) -> str:
+    """Return a fixed marker while still signaling reflection of the active credential."""
+    text = str(reason)
+    suffix = f"; active credential {REDACTED_VALUE}" if text_contains_secret(text, secret) else ""
+    return f"[untrusted-gtm-text] transport details omitted{suffix}"
 
 
 def send_request(
@@ -647,17 +836,21 @@ def send_request(
     credential: Credential,
     arguments: argparse.Namespace,
 ) -> ApiResult:
-    """Send one request, retrying only safe reads within explicit bounds."""
+    """Send one request, automatically replaying GET and no other method."""
+    reject_credential_reuse(credential, plan.body, url)
     headers = {
         "Accept": JSON_MEDIA_TYPE,
         "Authorization": f"Bearer {credential.value}",
         "User-Agent": "codex-google-tag-manager-management/1",
     }
-    body = None if plan.body is None else json.dumps(plan.body, separators=(",", ":")).encode()
+    try:
+        body = None if plan.body is None else json.dumps(plan.body, allow_nan=False, separators=(",", ":")).encode()
+    except ValueError as exception:
+        raise GoogleTagManagerCliError("Request body must contain only finite JSON numbers.") from exception
     if body is not None:
         headers["Content-Type"] = JSON_MEDIA_TYPE
     opener = request.build_opener(NoRedirectHandler())
-    retries = int(arguments.retries) if plan.method in SAFE_METHODS else 0
+    retries = int(arguments.retries) if method_is_get(plan.method) else 0
     for attempt in range(retries + 1):
         api_request = request.Request(  # noqa: S310  # URL is origin- and path-locked before this point.
             url,
@@ -668,20 +861,45 @@ def send_request(
         try:
             with opener.open(api_request, timeout=float(arguments.timeout)) as response:
                 status = int(response.status)
-                payload = response_payload(response.read(), response.headers.get("Content-Type", ""))
+                data = read_bounded_response(
+                    response,
+                    max_bytes=MAX_API_RESPONSE_BYTES,
+                    label="Tag Manager API response",
+                )
+                payload = response_payload(data, response.headers.get("Content-Type", ""))
                 if status < HTTP_SUCCESS_MIN or status >= HTTP_SUCCESS_LIMIT:
                     raise GoogleTagManagerCliError(f"API request returned unexpected HTTP {status}.")
-                return ApiResult(payload=payload, status=status, url=url)
+                return ApiResult(payload=payload, status=status, url=url, response_bytes=len(data))
         except error.HTTPError as exception:
             try:
-                if plan.method in SAFE_METHODS and exception.code in RETRYABLE_STATUS_CODES and attempt < retries:
+                try:
+                    details = read_error_body(exception, credential.value)
+                except GoogleTagManagerCliError as body_error:
+                    guidance = (
+                        indeterminate_write_guidance(plan.method) if exception.code in RETRYABLE_STATUS_CODES else ""
+                    )
+                    separator = " " if guidance else ""
+                    raise GoogleTagManagerCliError(f"{body_error}{separator}{guidance}") from exception
+                if exception.code in RETRYABLE_STATUS_CODES and attempt < retries:
                     time.sleep(retry_delay(exception, attempt))
                     continue
-                raise GoogleTagManagerCliError(f"API request failed with HTTP {exception.code}.") from exception
+                guidance = indeterminate_write_guidance(plan.method) if exception.code in RETRYABLE_STATUS_CODES else ""
+                separator = " " if guidance else ""
+                raise GoogleTagManagerCliError(
+                    f"API request failed with HTTP {exception.code}: {details}{separator}{guidance}"
+                ) from exception
             finally:
                 exception.close()
-        except error.URLError as exception:
-            raise GoogleTagManagerCliError(f"API request failed: {exception.reason}") from exception
+        except (error.URLError, TimeoutError) as exception:
+            if attempt < retries:
+                time.sleep(transport_retry_delay(attempt))
+                continue
+            reason = exception.reason if isinstance(exception, error.URLError) else exception
+            guidance = indeterminate_write_guidance(plan.method)
+            separator = " " if guidance else ""
+            raise GoogleTagManagerCliError(
+                f"API request failed: {safe_transport_reason(reason, credential.value)}{separator}{guidance}"
+            ) from exception
     raise GoogleTagManagerCliError("API request exhausted its retry budget.")
 
 
@@ -695,19 +913,44 @@ def next_page_token(payload: JsonValue) -> str | None:
 
 def preview_payload(plan: RequestPlan, context: GoogleTagManagerContext, url: str) -> dict[str, JsonValue]:
     """Build a redacted request preview with authorization requirements."""
+    secret = context.credential.value if context.credential else None
     return {
         "confirmationRequired": plan.high_risk,
-        "confirmationValue": plan.confirmation_value,
+        "confirmationValue": redact_known_secret(plan.confirmation_value, secret),
         "credentialEnvironment": context.credential.environment if context.credential else None,
         "dryRun": True,
         "request": {
-            "body": redact_json(plan.body, context.credential.value if context.credential else None),
+            "body": redact_json(plan.body, secret),
             "method": plan.method,
             "operationId": plan.operation_id,
-            "requiredScopes": list(plan.required_scopes),
-            "url": url,
+            "acceptableScopes": list(plan.acceptable_scopes),
+            "scopeSemantics": SCOPE_SEMANTICS if plan.acceptable_scopes else None,
+            "url": redact_known_secret(url, secret),
         },
     }
+
+
+def top_level_field_names(value: str) -> set[str]:
+    """Return top-level partial-response field names from a Google field mask."""
+    names: set[str] = set()
+    current: list[str] = []
+    depth = 0
+    for character in value:
+        if character == "(":
+            depth += 1
+        elif character == ")":
+            depth = max(depth - 1, 0)
+        if character == "," and depth == 0:
+            field = "".join(current).strip()
+            if field:
+                names.add(field.split("(", 1)[0].split("/", 1)[0].strip())
+            current = []
+            continue
+        current.append(character)
+    field = "".join(current).strip()
+    if field:
+        names.add(field.split("(", 1)[0].split("/", 1)[0].strip())
+    return names
 
 
 def validate_execution_mode(arguments: argparse.Namespace, plan: RequestPlan, *, is_safe: bool) -> None:
@@ -718,6 +961,13 @@ def validate_execution_mode(arguments: argparse.Namespace, plan: RequestPlan, *,
         raise GoogleTagManagerCliError("--paginate is only valid for safe read requests.")
     if bool(arguments.paginate) and plan.operation_id is not None and not plan.supports_page_token:
         raise GoogleTagManagerCliError("Discovery operation does not support pageToken pagination.")
+    fields = plan.query.get("fields")
+    if bool(arguments.paginate) and fields is not None:
+        selected_fields = top_level_field_names(fields)
+        if "*" not in selected_fields and "nextPageToken" not in selected_fields:
+            raise GoogleTagManagerCliError(
+                "Pagination with fields filtering must include top-level nextPageToken or use fields=*."
+            )
 
 
 def require_credential(context: GoogleTagManagerContext) -> Credential:
@@ -731,9 +981,30 @@ def result_payload(result: ApiResult, credential: Credential) -> dict[str, JsonV
     """Build one redacted API response object."""
     return {
         "data": redact_json(result.payload, credential.value),
+        "responseBytes": result.response_bytes,
         "status": result.status,
-        "url": result.url,
+        "url": redact_known_secret(result.url, credential.value),
     }
+
+
+def validate_result_semantics(plan: RequestPlan, result: ApiResult) -> None:
+    """Fail a successful transport when GTM reports compiler or synchronization failure."""
+    payload = result.payload
+    if not isinstance(payload, dict):
+        return
+    operation = plan.operation_id or f"{plan.method} {parse.urlsplit(plan.url).path}"
+    if payload.get("compilerError") is True:
+        raise GoogleTagManagerCliError(f"{operation} returned compilerError=true.")
+    sync_status = payload.get("syncStatus")
+    if isinstance(sync_status, dict):
+        if sync_status.get("syncError") is True:
+            raise GoogleTagManagerCliError(f"{operation} returned syncStatus.syncError=true.")
+        if sync_status.get("mergeConflict") is True:
+            raise GoogleTagManagerCliError(f"{operation} returned syncStatus.mergeConflict=true.")
+    is_sync = (plan.operation_id or "").endswith(".sync") or parse.urlsplit(plan.url).path.endswith(":sync")
+    merge_conflicts = payload.get("mergeConflict")
+    if is_sync and isinstance(merge_conflicts, list) and merge_conflicts:
+        raise GoogleTagManagerCliError(f"{operation} returned unresolved merge conflicts.")
 
 
 def write_paginated_results(
@@ -745,9 +1016,16 @@ def write_paginated_results(
     pages: list[JsonValue] = []
     query = dict(plan.query)
     pending_token: str | None = None
+    response_bytes = 0
     for _ in range(int(arguments.max_pages)):
         current_url = encode_url(plan.url, query)
         result = send_request(plan, current_url, credential, arguments)
+        next_response_bytes = response_bytes + result.response_bytes
+        if next_response_bytes > MAX_PAGINATED_RESPONSE_BYTES:
+            raise GoogleTagManagerCliError(
+                f"Tag Manager pagination exceeds the {MAX_PAGINATED_RESPONSE_BYTES}-byte cumulative safety limit."
+            )
+        response_bytes = next_response_bytes
         pages.append(result_payload(result, credential))
         pending_token = next_page_token(result.payload)
         if pending_token is None:
@@ -759,13 +1037,14 @@ def write_paginated_results(
             "nextPageToken": pending_token,
             "pageCount": len(pages),
             "pages": pages,
+            "responseBytes": response_bytes,
         }
     )
 
 
 def execute_plan(arguments: argparse.Namespace, context: GoogleTagManagerContext, plan: RequestPlan) -> None:
     """Preview or execute one guarded request, optionally traversing pages."""
-    is_safe = plan.method in SAFE_METHODS
+    is_safe = method_is_get(plan.method)
     validate_execution_mode(arguments, plan, is_safe=is_safe)
     initial_url = encode_url(plan.url, plan.query)
     preview = bool(arguments.dry_run) or (not is_safe and not bool(arguments.send))
@@ -779,7 +1058,9 @@ def execute_plan(arguments: argparse.Namespace, context: GoogleTagManagerContext
     if bool(arguments.paginate):
         write_paginated_results(arguments, plan, credential)
         return
-    write_json(result_payload(send_request(plan, initial_url, credential, arguments), credential))
+    result = send_request(plan, initial_url, credential, arguments)
+    write_json(result_payload(result, credential))
+    validate_result_semantics(plan, result)
 
 
 def handle_operations(arguments: argparse.Namespace, context: GoogleTagManagerContext) -> int:
@@ -791,7 +1072,8 @@ def handle_operations(arguments: argparse.Namespace, context: GoogleTagManagerCo
     selected = [
         operation
         for operation in operations
-        if (not method or operation.method == method)
+        if (bool(arguments.include_deprecated) or not operation.deprecated)
+        and (not method or operation.method == method)
         and (not scope or any(scope in item.casefold() for item in operation.scopes))
         and (not search or search in f"{operation.operation_id} {operation.path} {operation.description}".casefold())
     ]
@@ -801,8 +1083,13 @@ def handle_operations(arguments: argparse.Namespace, context: GoogleTagManagerCo
 
 def write_json(value: JsonValue) -> None:
     """Write deterministic human-readable JSON."""
-    json.dump(value, sys.stdout, indent=2, sort_keys=True)
-    _ = sys.stdout.write("\n")
+    try:
+        document = json.dumps(value, allow_nan=False, indent=2, sort_keys=True)
+    except ValueError as exception:
+        raise GoogleTagManagerCliError(
+            "Output contains a non-finite number and cannot be encoded as JSON."
+        ) from exception
+    _ = sys.stdout.write(f"{document}\n")
 
 
 def common_parser() -> argparse.ArgumentParser:
@@ -831,6 +1118,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     operations = subparsers.add_parser("operations", parents=[common], help="Discover API operations")
     add_discovery_options(operations)
+    _ = operations.add_argument("--include-deprecated", action="store_true")
     _ = operations.add_argument("--search")
     _ = operations.add_argument("--method", choices=HTTP_METHODS, dest="operation_method")
     _ = operations.add_argument("--scope")
@@ -839,6 +1127,7 @@ def build_parser() -> argparse.ArgumentParser:
     add_discovery_options(request_parser)
     _ = request_parser.add_argument("endpoint", nargs="?")
     _ = request_parser.add_argument("--operation-id")
+    _ = request_parser.add_argument("--allow-deprecated", action="store_true")
     _ = request_parser.add_argument("--method", choices=HTTP_METHODS)
     _ = request_parser.add_argument("--path", action="append", dest="path_values", default=[])
     _ = request_parser.add_argument("--query", action="append", default=[])
@@ -856,8 +1145,9 @@ def build_parser() -> argparse.ArgumentParser:
 
 def validate_arguments(arguments: argparse.Namespace) -> None:
     """Validate numeric execution bounds before any I/O."""
-    if float(arguments.timeout) <= 0:
-        raise GoogleTagManagerCliError("--timeout must be greater than zero.")
+    timeout = float(arguments.timeout)
+    if not math.isfinite(timeout) or timeout <= 0:
+        raise GoogleTagManagerCliError("--timeout must be finite and greater than zero.")
     if int(arguments.retries) < 0 or int(arguments.retries) > 10:  # noqa: PLR2004  # Explicit safety cap.
         raise GoogleTagManagerCliError("--retries must be between 0 and 10.")
     if arguments.command == "request" and (int(arguments.max_pages) < 1 or int(arguments.max_pages) > MAX_MAX_PAGES):

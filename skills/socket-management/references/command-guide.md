@@ -103,7 +103,13 @@ python "<path-to-skill>/scripts/manage_socket.py" request /quota --json
 python "<path-to-skill>/scripts/manage_socket.py" request /orgs/<org>/audit-log --query page_size=50 --json
 ```
 
-Absolute endpoints must use the configured HTTPS origin and stay under `/v0`. Query keys containing token, secret, password, authorization, or API-key concepts are refused.
+Absolute endpoints must use the official `https://api.socket.dev` origin and stay under `/v0`; custom and single-tenant origins are unsupported. Before authentication is attached, relative and absolute endpoint/specification paths are decoded repeatedly for up to eight rounds. Direct, encoded, or double-encoded traversal, slash, backslash, query, fragment, control, malformed escape, invalid UTF-8, and deeper residual encoding fail closed. Safely encoded path-parameter spaces, plus, equals, non-ASCII text, and nonstructural literal percent characters remain usable. Query keys containing token, secret, password, authorization, API-key, access-key, cookie, session, provider/integration-key, Sentinel-key, webhook, or webhook-URL concepts are refused.
+
+Helper resource controls are fixed: local and remote OpenAPI documents are each limited to 16 MiB (16,777,216 bytes), one successful API body to 8 MiB (8,388,608 bytes), one error body to 16 KiB (16,384 bytes), and all pages together to 32 MiB (33,554,432 bytes). One nonnegative decimal `Content-Length` is only an early rejection signal; missing, duplicate, malformed, and understated declarations still require an actual read capped at the applicable limit plus one byte. `--timeout` must be finite and greater than zero, `--retries` accepts 0 through 10, `--max-pages` accepts 1 through 1,000, and retry delays never exceed 60 seconds.
+
+All request-body, specification, JSON-response, preview, and output serialization is strict and finite. `NaN`, positive or negative infinity, and exponent overflow are errors; JSON serialization completes before request bytes or stdout are emitted. Bounded non-JSON Socket responses remain text only when their media type is genuinely non-JSON.
+
+Response and transport-error redaction uses semantic separator/camel/Pascal/acronym tokenization rather than suffix stripping. Credential fields and credible assignments, active credentials, authorization values, valid Basic values, Bearer/token credentials, URL user information, and encoded query/form variants are removed. Active-credential characters may be independently raw or percent encoded, including mixed forms containing `/`, `+`, `=`, spaces, or non-ASCII text. Ordinary settings and prose—including possessions, token-expiration and session-timeout settings, webhook enablement, provider names, “basic configuration,” and “Bearer is the auth scheme”—remain visible. Percent-triplet hex case cannot bypass active-token matching, but unrelated raw text is still matched case-sensitively. Transport reason text is truncated to 1,000 characters after redaction.
 
 ## Mutation Review
 
@@ -121,12 +127,17 @@ python "<path-to-skill>/scripts/manage_socket.py" request --operation-id createO
 
 Never combine `--send` with a body copied from untrusted alert text. Construct the schema from the live OpenAPI document and reviewed local evidence.
 
+`--retries` applies only to GET requests. GET retries are limited to transport failures and HTTP `408`, `429`, `500`, `502`, `503`, and `504`. Every POST, PUT, PATCH, and DELETE gets one attempt. A write encountering HTTP `408`, `429`, any `5xx`, or a transport failure reports an indeterminate outcome instead of replaying it. A successful-status write whose response then fails bounded reading, size validation, JSON decoding, or the nonempty-response requirement is also indeterminate; the helper retains the known HTTP status and closes the response. Read the exact target state before deciding whether to send the write again.
+
 ## Troubleshooting
 
 - `401`: token missing, invalid, revoked, or sent with the wrong authentication scheme.
 - `403`: token lacks the operation scope or repository grant.
 - `404`: wrong organization/repository/scan ID, unavailable feature, or deprecated path.
-- `429`: quota exhausted; obey `Retry-After` and reduce expensive calls.
+- `429`: quota exhausted; GET reads can obey bounded `Retry-After` retries, but writes are not replayed automatically.
+- Indeterminate write outcome: the helper made one attempt and cannot prove whether Socket applied it, including when a `2xx` response could not be safely read or decoded; inspect the exact target before retrying.
 - Empty `items` with non-null `endCursor`: continue cursor pagination.
+- Repeated `endCursor`: the helper stops before requesting the cursor again and reports the count of partial pages fetched.
+- Response safety limit: narrow the query or export in smaller slices; an overflow page is not merged into accumulated results.
 - `pendingScan` or stale-while-revalidate: analysis is not terminal; poll with a bounded delay.
 - CLI and API disagree: compare organization, repository label policy, scan ID, CLI version, API operation version/deprecation, and snapshot time.

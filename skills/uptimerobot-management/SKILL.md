@@ -22,22 +22,23 @@ Read [references/command-guide.md](references/command-guide.md) for exact comman
 2. Run `python scripts/manage_uptimerobot.py context`. Report credential presence and source names only, never values.
 3. For read-only work, prefer `UPTIMEROBOT_READ_ONLY_API_KEY`. Fall back to `UPTIMEROBOT_API_KEY` only when necessary.
 4. For mutations, require the main account key in `UPTIMEROBOT_API_KEY` or an OAuth-authorized MCP session. A monitor-specific or read-only key is insufficient.
-5. Confirm whether the user asked for inspection, a proposed change, or execution. Inspection never implies mutation.
+5. Keep both configured helper credentials exclusive to the generated `Authorization` header. Credential values must contain at least eight characters. Reject either active value at semantic boundaries in request paths, queries, or bodies even when percent-encoded, form-encoded, or repeatedly encoded.
+6. Confirm whether the user asked for inspection, a proposed change, or execution. Inspection never implies mutation.
 
 ## Inspect before changing
 
 1. Capture the target resource and its current state with normalized JSON.
 2. Correlate monitor status with incidents, response-time or uptime statistics, maintenance windows, alert contacts, integrations, and status-page visibility as relevant.
 3. Distinguish an active outage from a paused monitor, scheduled maintenance, notification delivery failure, stale status-page data, or a monitor configuration defect.
-4. Record IDs, status, timestamps, affected destinations, filters, pagination bounds, and source interface. Redact credential-like monitor fields and custom request secrets.
-5. If a result is paginated, follow only validated same-origin cursors and state the page cap used.
+4. Record IDs, status, timestamps, affected destinations, filters, pagination bounds, and source interface. Redact credential-like monitor fields, heartbeat `url`/`pingUrl` capability URLs, webhook destinations, integration capability values, cookies, passphrases/private keys, configured POST values, and nested request/response headers. Preserve ordinary monitor URLs and non-secret values.
+5. If a result is paginated, follow only validated same-origin cursors that retain the exact normalized collection endpoint path, preserve repeated filter pairs, reject malformed or repeated links, and state the page and byte caps used.
 
 ## Apply safe mutations
 
 1. Restate the exact resource, requested end state, user-visible impact, and rollback or compensating action.
 2. Preview first. Use CLI `--dry-run` where supported, omit helper `--send`, or present the MCP tool arguments before invoking a mutating tool.
-3. Obtain explicit authorization for the specific mutation when the current request does not already authorize it. Treat delete, bulk pause/start/update, incident publication, integration changes, status-page publication, and credential-bearing monitor edits as high impact. The helper additionally requires its reported exact `--confirm` value for deletes and bulk monitor operations.
-4. Execute once. Do not automatically retry a mutation after a timeout or ambiguous failure.
+3. Obtain explicit authorization for the specific mutation when the current request does not already authorize it. Treat delete, bulk pause/start/update, incident publication, integration changes, status-page publication, and credential-bearing monitor edits as high impact. The helper additionally requires its reported exact `--confirm` value for deletes and bulk monitor operations; that value binds the operation ID when available, method, normalized path, encoded query, and canonical JSON body digest.
+4. Execute once. Do not automatically retry a mutation after a timeout, transport loss, transient server failure, or response-consumption failure. Treat write-side HTTP `500`, `502`, `503`, and `504`, transport loss, and any post-attempt response read/size/UTF-8/strict-JSON failure as indeterminate: the mutation may have succeeded, so re-read the exact target before any manual retry. Treat a successfully consumed definitive `4xx`, including `429`, as definitive.
 5. Re-read the resource and adjacent state. Verify the intended fields, monitor runtime status, incident/status-page effect, and notification routing rather than trusting only the write response.
 6. Report the before/after state, interface used, verification evidence, and any unresolved warnings.
 
@@ -86,4 +87,4 @@ Return:
 - pagination/rate-limit bounds and any incomplete coverage;
 - risks, rollback guidance, and next actions.
 
-Never print API keys, authorization headers, monitor passwords, custom HTTP headers, post bodies, or other credential-like values.
+Never print API keys, authorization headers, monitor passwords, custom HTTP headers, cookies, heartbeat or known-provider path-token webhook capability URLs, integration values, configured POST values, passphrases/private keys, configured credential values or their encoded forms, or other credential-like values. Repeatedly decode structured key names before classifying them. Keep ordinary monitor URLs—including generic `/hooks/status` paths on ordinary hosts—and non-secret fields visible so findings remain useful.

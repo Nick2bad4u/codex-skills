@@ -279,15 +279,17 @@ def test_wakatime_auth_context_and_wrapped_read_plans() -> None:
         "codex-skills",
         "--branches",
         "main",
-        "--category",
-        "Coding",
         "--dry-run",
     )
     assert summaries_result.returncode == 0, summaries_result.stderr
     summary = as_dict(json.loads(summaries_result.stdout))
     query = as_dict(summary["query"])
-    assert query["start"] == "2026-08-01"
-    assert query["project"] == "codex-skills"
+    assert query == {
+        "branches": "main",
+        "end": "2026-08-07",
+        "project": "codex-skills",
+        "start": "2026-08-01",
+    }
 
     commands = (
         ("stats", "--range", "last_7_days"),
@@ -333,7 +335,7 @@ def test_wakatime_mutation_preview_and_validation_errors(tmp_path: Path) -> None
         ),
         ("stats", "--range", "bad/range", "--dry-run", "unsupported characters"),
         ("request", "https://example.com/api/v1/users/current", "--dry-run", "origin must match"),
-        ("request", "/users/current", "--query", "token=bad", "--dry-run", "token-like query parameter"),
+        ("request", "/users/current", "--query", "token=bad", "--dry-run", "sensitive query parameter"),
     )
     for case in cases:
         *arguments, expected = case

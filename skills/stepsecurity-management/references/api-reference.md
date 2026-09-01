@@ -85,8 +85,10 @@ The helper supports:
 - repeated `--path name=value`, `--query name=value`, and `--header name=value` inputs;
 - inline JSON or `--body-file` request bodies;
 - preview-only non-GET operations unless `--execute` is passed;
-- conservative same-origin redirects and redacted JSON output;
-- `links.next` pagination for JSON:API-like responses when requested.
+- no mutation redirects and a separate five-hop, cycle-checked, same-origin `/v1` redirect budget for reads;
+- bounded success and error bodies, finite JSON with at most 64 container levels, and redacted depth-safe output;
+- complete preservation of every accepted non-JSON or malformed-JSON body, without a hidden character-level truncation;
+- bounded `links.next` pagination for JSON:API-like responses when requested.
 
 The helper is a transport safety layer. The downloaded specification and organization permissions remain authoritative.
 
@@ -160,14 +162,22 @@ An observed endpoint is not automatically safe. Establish which action or proces
 
 ## Pagination and Retries
 
-Do not assume one response is complete. Follow documented cursors or `links.next` values until exhausted, while retaining the original same-origin and base-path restrictions.
+Do not assume one response is complete. Follow documented cursors or `links.next` values until exhausted, while retaining the original same-origin and base-path restrictions. The helper detects repeated validated next URLs and limits pagination to 1,000 pages and 32 MiB cumulatively; each success body is limited to 8 MiB and each error body to 16 KiB. Accepted text bodies are preserved in full, so pagination `complete` never hides a second, character-level evidence truncation.
+
+Every executed response bundle reports `complete`, `pageCount`, `maxPages`, and a fully validated `nextLink`. Natural exhaustion means `links.next` is absent or explicitly `null`; it sets `complete` to `true` and `nextLink` to `null`. Empty, scalar, list, or malformed next-link metadata fails with an explicit incomplete-page count. Reaching `--max-pages`, or choosing not to follow an available next link, sets `complete` to `false`; treat those pages as a partial inventory. A repeated next link is also an error with an explicit incomplete-page count.
 
 For transient `429`, `502`, `503`, and `504` responses:
 
 - honor `Retry-After` when present;
 - otherwise use bounded exponential backoff;
-- retry idempotent reads automatically;
-- do not automatically replay a non-idempotent mutation unless the API documents an idempotency mechanism.
+- retry only GET automatically;
+- never replay a mutation automatically.
+
+After any attempted non-read request fails—including a redirect, HTTP error, timeout, connection reset, other operating-system transport error, incomplete success/error-body read, excessive valid-JSON nesting, or response-close failure—the helper reports an indeterminate outcome. POST, PUT, PATCH, and DELETE each remain exactly one request. Verify the exact resource or StepSecurity audit log before a manual retry; a local failure is not proof that the remote mutation was not applied. Open, body-read, and close-failure details are bounded and stripped of the configured authorization value, and expected failures become concise CLI errors without tracebacks.
+
+The helper attempts closure for every acquired success and HTTP-error response path. Closure cannot be guaranteed when `close()` itself raises; that failure is surfaced through the same bounded transport boundary. Request, response, redaction, and command-output JSON are validated iteratively for finite numbers, cycles, supported JSON types, and explicit nesting limits before recursive library serialization. Validation, programmer errors, `KeyboardInterrupt`, and `SystemExit` are not misclassified as transport failures.
+
+`--retries` is capped at 10, and timeout values must be positive and finite. Redirects do not consume or expand the retry budget.
 
 Report partial pagination, permission errors, and unavailable telemetry explicitly.
 

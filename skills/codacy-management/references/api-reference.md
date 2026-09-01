@@ -57,6 +57,8 @@ For reproducibility, download the live definition separately and use `--spec-fil
 - Recommended for: v3 API calls, organization-wide queries, security findings, policy management, and supported Cloud CLI operations.
 - Durable automation: use a dedicated service account so a person's departure or role change does not silently break automation.
 
+The bundled helper permits the loaded account token only in the `api-token` header. It rejects that token in an operation ID before OpenAPI lookup and anywhere in a completed URL authority, hostname, path/query, or recursive JSON body scalar before preview and again immediately before authenticated transport. Plain, form-encoded, percent-encoded, and repeatedly encoded forms are covered. Preview and result URLs, including URL strings nested in returned JSON, redact both the active token and values whose query parameter names imply credentials, tokens, keys, or signatures. Every reconstructed URL is rescanned and replaced with a safe placeholder if token absence cannot be proven. Sensitive structured JSON keys are redacted independently of the active token.
+
 ### Repository API tokens
 
 - Environment variable used by maintained tools: `CODACY_PROJECT_TOKEN`.
@@ -111,10 +113,12 @@ V3 list/search operations commonly return:
 ```
 
 - Pass the returned cursor as the next request's `cursor` query parameter.
-- Stop only when `pagination.cursor` is absent.
+- An absent `pagination` object or an absent cursor means pagination is complete.
+- When present, `pagination` must be an object and `cursor` must be a nonblank string without surrounding whitespace. Malformed metadata fails the command.
 - Default limit: 100.
 - Maximum limit: 1000.
-- Detect a repeated cursor and enforce a maximum-page boundary.
+- Detect a repeated cursor and enforce a helper maximum of 500 pages.
+- If a cursor remains after the configured final page, fail as incomplete instead of returning a partial result. `fetchedPages` is the actual number of fetched responses.
 
 Codacy Cloud documents 2500 requests per five minutes per source IP. It may return HTTP 503 or 504 when rate-limited. Add delay between large request sequences, retry conservatively, and avoid parallel page storms. The documented Cloud limit does not apply to Self-hosted.
 
@@ -146,6 +150,10 @@ Resolve these by `operationId` against the live specification before use. Repres
 | Organization audit log             | `listAuditLogsForOrganization`                | GET    |
 
 POST does not always mean mutation: search and overview operations use POST bodies. The helper still previews every non-GET request by default because method alone cannot prove intent. Add `--send` after reviewing the resolved URL and redacted body.
+
+The same uncertainty applies to retries: only GET requests are replayed automatically after HTTP 429/503/504, a transport failure, or a low-level response-read failure. Deterministic size and JSON validation failures are not retried. Raw non-GET requests and operation-derived non-GET requests are single-attempt. HTTP 408, 429, or any 5xx response to a non-GET request is potentially indeterminate. A post-send bounded-read, strict-decode, redaction, serialization, or output failure is also potentially indeterminate. In every such case, read current Codacy state before manually trying again. Retries are limited to 10, the finite retry delay to 60 seconds, and the finite request timeout to greater than 0 and at most 300 seconds. `Retry-After` accepts an ASCII decimal delay-seconds value or a timezone-aware HTTP date parsed against UTC; future delays cap at 60 seconds, past dates produce no delay, and fractional, scientific, negative, non-ASCII, malformed, or timezone-less values use bounded exponential fallback.
+
+The helper accepts only strict standards JSON, rejecting `NaN`, `Infinity`, and `-Infinity` in request bodies, structured errors, API responses, and output. Every decoded, redacted, and serialized JSON tree is limited to 64 container levels; over-depth or recursive structures become non-echoing CLI errors rather than Python tracebacks. OpenAPI downloads are limited to 16 MiB, individual API responses to 8 MiB, cumulative cursor pagination to 32 MiB, and captured HTTP error bodies to 16 KiB. Every stream uses an actual `limit + 1` read so missing or inaccurate `Content-Length` headers cannot bypass a limit. Malformed, non-standard, or over-depth structured error bodies are safely omitted rather than echoed as raw text.
 
 ## Configuration precedence
 
@@ -214,7 +222,9 @@ Use the target instance's domain:
 - v3 base: `https://<instance>/api/v3`
 - OpenAPI: `https://<instance>/api/api-docs/swagger.yaml`
 
-Do not assume Cloud endpoints, fields, or feature availability match an older Self-hosted version. Read the instance-specific live specification. The bundled helper refuses HTTP because token-bearing plaintext requests are unsafe.
+Do not assume Cloud endpoints, fields, or feature availability match an older Self-hosted version. Read the instance-specific live specification. The bundled helper accepts a custom HTTPS host only when the authority contains a hostname, IPv6 literals are bracketed, and any explicit port is from 1 through 65535. Implicit HTTPS and explicit port 443 are treated as the same origin. The API base path must, case-sensitively, normalize to exactly `/api/v3`; a trailing slash is canonicalized away. Mixed-case, encoded, or otherwise noncanonical base paths are rejected.
+
+Request paths are repeatedly decoded to a stable form with a five-pass ceiling. A single encoded separator needed for a GitLab subgroup is allowed only when the decoded path remains structurally under `/api/v3`. Dot segments, backslashes, encoded query/fragment delimiters, base escapes, and residual or nested percent encodings that could alter path structure are rejected. The helper also refuses HTTP because token-bearing plaintext requests are unsafe.
 
 ## Mutation review rules
 

@@ -5,6 +5,7 @@
 - [Official Sources](#official-sources)
 - [Regions And Authentication](#regions-and-authentication)
 - [REST Versioning And JSON API](#rest-versioning-and-json-api)
+- [Helper Safety Limits](#helper-safety-limits)
 - [Pagination And Rate Limits](#pagination-and-rate-limits)
 - [Core Surfaces](#core-surfaces)
 - [Mutations And Asynchronous Work](#mutations-and-asynchronous-work)
@@ -34,6 +35,8 @@ REST base URLs:
 | `SNYK-EU-01` | `https://api.eu.snyk.io/rest` |
 | `SNYK-AU-01` | `https://api.au.snyk.io/rest` |
 
+These four bases are the helper's complete trust list. `--base-url` selects one of them; custom, single-tenant, lookalike, alternate-path, and explicit-port origins are rejected. Before reading a token or constructing an authenticated request, the helper validates the origin and repeatedly decodes and confines OpenAPI and endpoint paths. Literal or encoded/double-encoded traversal, slash, backslash, query/fragment delimiter, control character, malformed escape such as `%2` or `%GG`, and dangerous residual escape are rejected. Properly encoded parameter spaces, plus signs, equals signs, non-ASCII text, and a nonstructural literal percent remain allowed.
+
 Tokens are region-specific. Configure the CLI with `snyk config environment <ENVIRONMENT_NAME>` before `snyk auth` for a non-default region.
 
 Personal and service-account API tokens use `Authorization: token <token>`. Snyk App access tokens use `Authorization: bearer <access_token>`. Do not substitute the bearer scheme for an ordinary personal token.
@@ -42,7 +45,9 @@ Enterprise automation should use a service account for continuity and least priv
 
 ## REST Versioning And JSON API
 
-The REST API follows JSON:API with documented caveats and OpenAPI 3.0.3. Requests containing data must use `Content-Type: application/vnd.api+json`; the helper also sends `Accept: application/vnd.api+json`.
+The REST API follows JSON:API with documented caveats and OpenAPI 3.0.3. Requests containing data must use `Content-Type: application/vnd.api+json`; the helper also sends `Accept: application/vnd.api+json`. The helper uses strict finite JSON for request bodies, local and remote OpenAPI documents, version catalogs, REST responses, and output. It rejects `NaN`, `Infinity`, `-Infinity`, and finite-looking exponents that overflow to a nonfinite float. Request and output serialization use `allow_nan=False` and complete before any bytes are sent or printed.
+
+Successful REST decoding is status-aware. Status `204` is the only success allowed to have an empty body; it produces payload `null` while preserving status `204`. Every nonempty `2xx` body must parse as strict JSON regardless of `Content-Type`, including a nonempty `204`. Therefore an empty `200`, a plain-text `200`, or malformed nonempty `204` is a failure rather than a text fallback.
 
 Every REST request requires `version=YYYY-MM-DD` or an older stability suffix where supported. Versions from 2024-10-15 onward use a date contract; the current day's date resolves to the most recent compatible API, but reproducible automation should pin a reviewed date. Earlier contracts can use `~beta` or `~experimental`.
 
@@ -50,11 +55,35 @@ GA endpoints have the strongest support promise. Beta and experimental endpoints
 
 Snyk also has a legacy v1 API. Prefer REST when the operation has migrated. Do not mechanically translate v1 IDs or response shapes; consult the endpoint-specific migration guide, especially for issue IDs and project listings.
 
+## Helper Safety Limits
+
+The helper applies separate actual-byte ceilings:
+
+| Input or response                         | Safety limit |
+| ----------------------------------------- | ------------ |
+| Local OpenAPI document                    | 16 MiB       |
+| Remote OpenAPI document                   | 16 MiB       |
+| OpenAPI version-catalog response          | 1 MiB        |
+| One successful REST API response          | 8 MiB        |
+| One HTTP error response                   | 16 KiB       |
+| All responses in one paginated REST read  | 32 MiB       |
+| Displayed untrusted transport-reason text | 1000 chars   |
+
+A single valid nonnegative decimal `Content-Length` can reject an oversized response before its body is read. Missing, duplicate, malformed, or understated declarations are not trusted: the helper still reads at most the applicable limit plus one byte and rejects actual overflow. Responses and HTTP errors are closed on success, rejection, retry, and decode failure. Only an empty status `204` response maps to `null`; other empty successes and every malformed or nonfinite nonempty success fail.
+
+Credential redaction tokenizes separators, camelCase, and PascalCase, then matches semantic credential fields rather than stripping separators or a trailing `s`. It covers access/API/provider/integration/secret/Sentinel keys, authorization, tokens, cookies, sessions and session IDs, credentials, passwords, secrets, webhooks, and webhook URLs in nested objects and arrays. It deliberately preserves `possessions`, `tokenExpirationDays`, `sessionTimeoutMinutes`, `webhookEnabled`, `jiraProjectKey`, `providerName`, `secretScanningEnabled`, and similar ordinary fields. The same detector rejects credential-bearing query names.
+
+Scalar and transport-reason redaction is syntax-aware. It removes actual `Authorization: Bearer ...`, valid Basic credentials, credible bearer/token-scheme credentials, URL user information, and credential assignments such as `providerSession=...` or `apiToken=...`; it preserves prose such as `token expiration`, `basic configuration`, and `Bearer is the auth scheme`. Active credentials are removed in raw, quoted, scheme-wrapped and scheme-stripped, form/query, URL-user-info, and partially or fully percent-encoded forms. Percent-triplet hexadecimal matching is case-insensitive without making ordinary raw text case-insensitive, and supports credentials containing `/`, `+`, `=`, spaces, and non-ASCII text. Displayed transport reasons remain capped at 1000 characters.
+
 ## Pagination And Rate Limits
 
-REST list endpoints use cursor pagination. Follow the response's `links.next` URL until it is null or absent. The link contains opaque `starting_after` and other parameters. Do not decode, edit, or combine the cursor with a new sort. The helper validates every next link against the configured region and `/rest` base before following it.
+REST list endpoints use cursor pagination. Missing top-level `links`, explicit `links: null`, or a `links` mapping with missing or null `next` completes pagination. A present non-null, non-mapping `links` value fails, as does a malformed non-null `links.next`; invalid shapes never become synthetic completion. A nonempty string `links.next` contains opaque `starting_after` and other parameters. Do not decode, edit, or combine the cursor with a new sort. Before following it, the helper repeatedly decodes and confines its path to the configured region and `/rest` base. It canonicalizes and records each requested next URL; an equivalent repeated URL fails with the number of pages already fetched before the repeated request is sent.
 
-Snyk documents 1,620 requests per minute per API key. Handle HTTP `429`, honor `Retry-After` when present, and retry with bounded backoff. New protective limits may be introduced without being considered an API breaking change.
+Snyk documents 1,620 requests per minute per API key. The helper automatically retries only `GET`, for explicit HTTP statuses `408`, `429`, `500`, `502`, `503`, and `504`, plus transport failures. It honors a finite nonnegative `Retry-After` when present; invalid, negative, or nonfinite delays use an overflow-safe fallback, and every delay is capped at 60 seconds. `--retries` accepts `0..10`, and `--max-pages` accepts `1..1000`. Broader write ambiguity does not broaden this GET status set.
+
+POST, PUT, PATCH, and DELETE always receive one network attempt. HTTP `408`, `429`, every `5xx`, or a transport failure has an indeterminate write outcome. A read/OSError, actual-size rejection, strict JSON decode failure, or invalid empty body after any non-GET `2xx` is also indeterminate because the operation may already have applied; the error preserves the known status when available. Verify the exact resource or audit log before any manual retry.
+
+Pagination counts actual response bytes before retaining a page's `data`. The exact 32 MiB cumulative boundary is accepted; a page that would exceed the 32 MiB cumulative safety limit is fetched but not merged, and the error identifies the count of preceding pages retained.
 
 Sorting can make pagination inconsistent when new records are inserted. Prefer default insertion order when a complete stable inventory matters.
 
@@ -106,7 +135,7 @@ Preview exact IDs, bodies, and permissions for:
 - integrations, brokers, registries, notifications, and apps;
 - cloud environment or scan operations.
 
-The helper refuses non-GET execution without `--send`. A preview proves only request construction. After sending, re-read the resource or poll its documented job. Do not claim completion from `202 Accepted` or a queued state.
+The helper refuses non-GET execution without `--send`. A preview proves only request construction. After sending, re-read the resource or poll its documented job. An empty `204`, including a typical `204 DELETE`, is reported with status `204` and response `null`; a nonempty `204` must contain strict JSON. Do not claim completion from `202 Accepted`, a queued state, or an indeterminate write error, including a failure while reading or decoding a successful write response.
 
 ## CLI Boundaries
 
