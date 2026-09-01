@@ -5,9 +5,14 @@
 
 ## ✨ What's Changed
 
-- <b>Commit Range: ➡️</b> [`v1.4.1...ec6a59e`](https://github.com/Nick2bad4u/codex-skills/compare/v1.4.1...ec6a59ec23c0f33a659c8edf9bb33ffa535533ab "View full commit range on GitHub")
+- <b>Commit Range: ➡️</b> [`v1.4.1...e5c6382`](https://github.com/Nick2bad4u/codex-skills/compare/v1.4.1...e5c6382f82967e888ab305dc3df9aee054199e06 "View full commit range on GitHub")
 
 ### 🛠️ Bug Fixes
+
+- [`967768a`](https://github.com/Nick2bad4u/codex-skills/commit/967768af583968cdaaefad31e7c7c677b5a7ad38 "Diff: 3 files, +412 | -315") — _(sonar)_ Refactor auditor quality findings&nbsp;<sub><em>(3&nbsp;files,&nbsp;+412,&nbsp;-315)</em></sub>
+  - ♻️ [refactor] Decompose package-owner, strict-Python, and SchemaStore validation branches into smaller typed helpers.
+  - 🧹 [chore] Replace repeated manifest, lockfile, script, cache, and schema literals with named domain constants.
+  - ✅ [fix] Simplify parser and capability decisions without changing the auditors' fail-closed validation contracts.
 
 - [`3ad26d0`](https://github.com/Nick2bad4u/codex-skills/commit/3ad26d0d736f7c0e7955b8cc5b13a9fc09dd0416 "Diff: 13 files, +8104 | -525") — _(auditors)_ Harden repository analysis boundaries&nbsp;<sub><em>(13&nbsp;files,&nbsp;+8104,&nbsp;-525)</em></sub>
   - 🔒️ [fix] Constrain repository discovery, path resolution, subprocess execution, and report parsing to explicit trusted boundaries.
@@ -20,6 +25,23 @@
   - 🔁 [fix] Limit automatic retries to safe reads while preserving one-shot semantics for state-changing requests.
   - 🧪 [test] Add adversarial transport, pagination, path, redaction, and confirmation coverage for every affected service.
   - 📝 [docs] Align skill procedures and API references with the hardened command behavior.
+
+### 📝 Documentation
+
+- [`464afa5`](https://github.com/Nick2bad4u/codex-skills/commit/464afa53accab138cc5cccf327c8159022ad3f7c "Diff: 1 file, +761 | -4") — _(changelog)_ Regenerate complete release history&nbsp;<sub><em>(1&nbsp;file,&nbsp;+761,&nbsp;-4)</em></sub>
+  - 📝 [docs] Preserve the full git-cliff history and add the complete post-v1.4.1 candidate range for the hardened helpers, auditors, package surface, and release workflow.
+
+### 🎨 Styling
+
+- [`6f577cd`](https://github.com/Nick2bad4u/codex-skills/commit/6f577cd35caf01ef7c069e9cfbc62e0f5b7055d1 "Diff: 1 file, +18 | -18") — _(changelog)_ Format generated tables&nbsp;<sub><em>(1&nbsp;file,&nbsp;+18,&nbsp;-18)</em></sub>
+  - 🎨 [style] Apply the repository Prettier rules to two historical Dependabot tables without changing release content.
+
+### 🧪 Testing
+
+- [`8523cb6`](https://github.com/Nick2bad4u/codex-skills/commit/8523cb6ae0d39c8a4f8e49c42409b0176fc17b0a "Diff: 7 files, +390 | -232") — _(sonar)_ Isolate exception assertions&nbsp;<sub><em>(7&nbsp;files,&nbsp;+390,&nbsp;-232)</em></sub>
+  - 🧪 [test] Hoist plans, contexts, payloads, and runtimes out of pytest.raises blocks so each assertion exercises one exception-producing call.
+  - ✅ [test] Keep the original error types, match expressions, retry boundaries, and safety scenarios intact across all affected management suites.
+  - 🏷️ [test] Add the narrow JSON value annotation required for the non-finite Tag Manager payload.
 
 ### 🧹 Chores
 
@@ -43,6 +65,18 @@
   - ⬆️ [build] Refresh the reviewed development toolchain and lockfile without adding runtime dependencies.
   - 🔎 [build] Tighten skill-surface auditing around the intended package contract.
   - 📝 [docs] Synchronize the README with all 29 repository skills.
+
+### 🛡️ Security
+
+- [`e5c6382`](https://github.com/Nick2bad4u/codex-skills/commit/e5c6382f82967e888ab305dc3df9aee054199e06 "Diff: 1 file, +1 | -1") — _(release)_ Run pinned Prettier binary&nbsp;<sub><em>(1&nbsp;file,&nbsp;+1,&nbsp;-1)</em></sub>
+  - 🔒️ [security] Invoke the lockfile-installed Prettier CLI directly during release changelog formatting.
+  - 👷 [ci] Avoid npx package resolution in the publish job while preserving the existing formatter version and arguments.
+  - ✅ [ci] Keep the workflow valid under the repository's native actionlint gate.
+
+- [`4b48489`](https://github.com/Nick2bad4u/codex-skills/commit/4b48489dfe6dcd1aa6f0d210cf1423fa445b11ce "Diff: 7 files, +828 | -424") — 🐛 [fix] (sonar) Refactor management quality findings&nbsp;<sub><em>(7&nbsp;files,&nbsp;+828,&nbsp;-424)</em></sub>
+  - ♻️ [refactor] Split complex request, retry, pagination, redaction, and bounded-response paths into focused typed helpers.
+  - 🔒️ [security] Preserve fail-closed URL, credential, JSON-shape, response-size, and indeterminate-write protections across all seven management clients.
+  - 🎨 [style] Centralize repeated labels, patterns, and limits while simplifying regular expressions and exception handling flagged by Sonar.
 
 ## ✨ What's Changed in v1.4.1
 
