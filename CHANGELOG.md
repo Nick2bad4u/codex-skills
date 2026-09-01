@@ -5,9 +5,13 @@
 
 ## ✨ What's Changed
 
-- <b>Commit Range: ➡️</b> [`v1.4.1...7c94c2e`](https://github.com/Nick2bad4u/codex-skills/compare/v1.4.1...7c94c2e14d2d7eefa994165e97b4db92799a3bb0 "View full commit range on GitHub")
+- <b>Commit Range: ➡️</b> [`v1.4.1...3b3017f`](https://github.com/Nick2bad4u/codex-skills/compare/v1.4.1...3b3017fca6f4e1b4ec91ddb8ca48f23abe4f1d50 "View full commit range on GitHub")
 
 ### 🛠️ Bug Fixes
+
+- [`dfa65dd`](https://github.com/Nick2bad4u/codex-skills/commit/dfa65dd49a25647b4ad03c84e4165f0ad69b4fef "Diff: 2 files, +147 | -61") — _(sonar)_ Reduce residual Python complexity&nbsp;<sub><em>(2&nbsp;files,&nbsp;+147,&nbsp;-61)</em></sub>
+  - 🐛 [fix] Extract Codacy request failure handling while preserving GET-only retries and bounded errors.
+  - 🐛 [fix] Decompose dependency validation and update command discovery without changing deterministic ordering or fail-closed mutation gating.
 
 - [`7c94c2e`](https://github.com/Nick2bad4u/codex-skills/commit/7c94c2e14d2d7eefa994165e97b4db92799a3bb0 "Diff: 1 file, +568 | -417") — _(dependencies)_ Refresh Python artifact hashes&nbsp;<sub><em>(1&nbsp;file,&nbsp;+568,&nbsp;-417)</em></sub>
   - 🔒️ [fix] Replace stale pre-update hashes retained by the merged Dependabot version bump with current platform-neutral PyPI artifact hashes.
@@ -32,6 +36,11 @@
   - 📝 [docs] Align skill procedures and API references with the hardened command behavior.
 
 ### 📝 Documentation
+
+- [`223be9c`](https://github.com/Nick2bad4u/codex-skills/commit/223be9ca71309118b6f58dea29b0e85aa486b0cd "Diff: 1 file, +11 | -1") — _(changelog)_ Record dependency lock repair&nbsp;<sub><em>(1&nbsp;file,&nbsp;+11,&nbsp;-1)</em></sub>
+  - 📝 [docs] Add the corrected Python artifact-hash commit to the complete post-v1.4.1 release range.
+  - 🔗 [docs] Preserve the rebased Sonar, Dependabot, and release-hardening commit links in one generated history.
+  - 🎨 [style] Keep the regenerated Markdown idempotent under the pinned Prettier version.
 
 - [`18049fb`](https://github.com/Nick2bad4u/codex-skills/commit/18049fbbac4f31072e6c2f4508700fa1ed731b6a "Diff: 1 file, +14 | -5") — _(changelog)_ Sync rebased release history&nbsp;<sub><em>(1&nbsp;file,&nbsp;+14,&nbsp;-5)</em></sub>
   - 📝 [docs] Regenerate the post-v1.4.1 range after rebasing the Sonar remediation onto the merged Dependabot update.
@@ -86,6 +95,10 @@
 - [`725420e`](https://github.com/Nick2bad4u/codex-skills/commit/725420ee9a33a5df0767cb874db67f0a3f77c61b "Diff: 2 files, +20 | -20") — ⬆️ [build] Update dependabot-all dependencies&nbsp;<sub><em>(2&nbsp;files,&nbsp;+20,&nbsp;-20)</em></sub>
 
 ### 🛡️ Security
+
+- [`3b3017f`](https://github.com/Nick2bad4u/codex-skills/commit/3b3017fca6f4e1b4ec91ddb8ca48f23abe4f1d50 "Diff: 3 files, +91 | -15") — _(credentials)_ Tokenize identifier keys linearly&nbsp;<sub><em>(3&nbsp;files,&nbsp;+91,&nbsp;-15)</em></sub>
+  - 🔒️ [fix] Replace backtracking-prone acronym regexes with deterministic standalone scanners for Snyk and Socket.
+  - 🧪 [test] Cover uppercase acronym credentials and adversarial 100,000-character prefixes.
 
 - [`dcd10ed`](https://github.com/Nick2bad4u/codex-skills/commit/dcd10edba628519eab74378fc283d5273f44a152 "Diff: 1 file, +1 | -1") — _(release)_ Run pinned Prettier binary&nbsp;<sub><em>(1&nbsp;file,&nbsp;+1,&nbsp;-1)</em></sub>
   - 🔒️ [security] Invoke the lockfile-installed Prettier CLI directly during release changelog formatting.
