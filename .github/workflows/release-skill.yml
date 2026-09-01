@@ -274,7 +274,7 @@ jobs:
                   TAG: "${{ steps.vars.outputs.tag }}"
               run: |
                   npm run changelog:generate -- --tag "$TAG"
-                  npx prettier CHANGELOG.md --write --log-level warn
+                  node node_modules/prettier/bin/prettier.cjs CHANGELOG.md --write --log-level warn
 
             - name: "Validate npm package"
               run: "npm run release:verify"
