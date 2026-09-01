@@ -269,13 +269,13 @@
 
 - [`303a743`](https://github.com/Nick2bad4u/codex-skills/commit/303a7434fe8edf3e600c9d484bbd51c0f754fef1 "Diff: 5 files, +895 | -776") — _(deps)_ [dependency] Update dependency group&nbsp;<sub><em>(5&nbsp;files,&nbsp;+895,&nbsp;-776)</em></sub>
   - Bumps the dependabot-all group with 6 updates:
-  - | Package | From | To |
-    | --- | --- | --- |
-    | [actions/checkout](https://github.com/actions/checkout) | `7.0.0` | `7.0.1` |
-    | [actions/setup-node](https://github.com/actions/setup-node) | `6.4.0` | `7.0.0` |
-    | [actions/setup-python](https://github.com/actions/setup-python) | `6.3.0` | `7.0.0` |
-    | [github/codeql-action/init](https://github.com/github/codeql-action) | `4.36.2` | `4.37.3` |
-    | [github/codeql-action/analyze](https://github.com/github/codeql-action) | `4.36.2` | `4.37.3` |
+  - | Package                                                                       | From     | To       |
+    | ----------------------------------------------------------------------------- | -------- | -------- |
+    | [actions/checkout](https://github.com/actions/checkout)                       | `7.0.0`  | `7.0.1`  |
+    | [actions/setup-node](https://github.com/actions/setup-node)                   | `6.4.0`  | `7.0.0`  |
+    | [actions/setup-python](https://github.com/actions/setup-python)               | `6.3.0`  | `7.0.0`  |
+    | [github/codeql-action/init](https://github.com/github/codeql-action)          | `4.36.2` | `4.37.3` |
+    | [github/codeql-action/analyze](https://github.com/github/codeql-action)       | `4.36.2` | `4.37.3` |
     | [step-security/harden-runner](https://github.com/step-security/harden-runner) | `2.19.4` | `2.20.0` |
   - Updates `actions/checkout` from 7.0.0 to 7.0.1
 - [Release notes](https://github.com/actions/checkout/releases)
@@ -300,17 +300,17 @@
 - [Commits](https://github.com/step-security/harden-runner/compare/9af89fc71515a100421586dfdb3dc9c984fbf411...bf7454d06d71f1098171f2acdf0cd4708d7b5920)
   [dependabot][dev][all](deps-dev): [dependency] Update dependency group
   - Bumps the dependabot-all group with 9 updates:
-  - | Package | From | To |
-    | --- | --- | --- |
-    | [eslint](https://github.com/eslint/eslint) | `10.7.0` | `10.8.0` |
-    | [eslint-config-nick2bad4u](https://github.com/Nick2bad4u/eslint-config-nick2bad4u) | `5.0.0` | `11.0.1` |
-    | [gitcliff-config-nick2bad4u](https://github.com/Nick2bad4u/gitcliff-config-nick2bad4u) | `1.3.0` | `1.4.0` |
-    | [jscpd](https://github.com/kucherenko/jscpd/tree/HEAD/rust/jscpd) | `5.0.12` | `5.0.14` |
-    | [ncu-config-nick2bad4u](https://github.com/Nick2bad4u/ncu-config-nick2bad4u) | `0.2.0` | `0.2.1` |
-    | [npm-check-updates](https://github.com/raineorshine/npm-check-updates) | `22.2.9` | `23.0.0` |
-    | [prettier](https://github.com/prettier/prettier) | `3.9.5` | `3.9.6` |
-    | [secretlint](https://github.com/secretlint/secretlint) | `13.0.2` | `13.0.4` |
-    | [stylelint](https://github.com/stylelint/stylelint) | `17.14.0` | `17.14.1` |
+  - | Package                                                                                | From      | To        |
+    | -------------------------------------------------------------------------------------- | --------- | --------- |
+    | [eslint](https://github.com/eslint/eslint)                                             | `10.7.0`  | `10.8.0`  |
+    | [eslint-config-nick2bad4u](https://github.com/Nick2bad4u/eslint-config-nick2bad4u)     | `5.0.0`   | `11.0.1`  |
+    | [gitcliff-config-nick2bad4u](https://github.com/Nick2bad4u/gitcliff-config-nick2bad4u) | `1.3.0`   | `1.4.0`   |
+    | [jscpd](https://github.com/kucherenko/jscpd/tree/HEAD/rust/jscpd)                      | `5.0.12`  | `5.0.14`  |
+    | [ncu-config-nick2bad4u](https://github.com/Nick2bad4u/ncu-config-nick2bad4u)           | `0.2.0`   | `0.2.1`   |
+    | [npm-check-updates](https://github.com/raineorshine/npm-check-updates)                 | `22.2.9`  | `23.0.0`  |
+    | [prettier](https://github.com/prettier/prettier)                                       | `3.9.5`   | `3.9.6`   |
+    | [secretlint](https://github.com/secretlint/secretlint)                                 | `13.0.2`  | `13.0.4`  |
+    | [stylelint](https://github.com/stylelint/stylelint)                                    | `17.14.0` | `17.14.1` |
   - Updates `eslint` from 10.7.0 to 10.8.0
 - [Release notes](https://github.com/eslint/eslint/releases)
 - [Commits](https://github.com/eslint/eslint/compare/v10.7.0...v10.8.0)
