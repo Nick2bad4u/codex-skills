@@ -25,9 +25,12 @@ SCHEMASTORE_LOCAL_CATALOG_URL_BASES: Final = (
     SCHEMASTORE_PUBLIC_CATALOG_URL_BASE,
     SCHEMASTORE_RAW_CATALOG_URL_BASE,
 )
+CATALOG_PATH: Final = "src/api/json/catalog.json"
+SCHEMA_VALIDATION_PATH: Final = "src/schema-validation.jsonc"
+SCHEMASTORE_CLI: Final = "./cli.js"
 CRITICAL_EXACT_PATHS: Final = {
-    "src/api/json/catalog.json",
-    "src/schema-validation.jsonc",
+    CATALOG_PATH,
+    SCHEMA_VALIDATION_PATH,
 }
 CRITICAL_PREFIXES: Final = (
     "src/schemas/json/",
@@ -422,7 +425,7 @@ def catalog_entry_urls(entry: object, index: int) -> set[str]:
         raise fail(
             "catalog_structure_invalid",
             f"catalog.json schemas[{index}] must be an object with a string url.",
-            path="src/api/json/catalog.json",
+            path=CATALOG_PATH,
         )
     urls = {cast("str", catalog_entry["url"])}
     if "versions" not in catalog_entry:
@@ -432,14 +435,14 @@ def catalog_entry_urls(entry: object, index: int) -> set[str]:
         raise fail(
             "catalog_structure_invalid",
             f"catalog.json schemas[{index}].versions must be an object with string URL values.",
-            path="src/api/json/catalog.json",
+            path=CATALOG_PATH,
         )
     for version_name, version_url in versions.items():
         if not isinstance(version_url, str):
             raise fail(
                 "catalog_structure_invalid",
                 f"catalog.json schemas[{index}].versions[{version_name!r}] must be a string URL.",
-                path="src/api/json/catalog.json",
+                path=CATALOG_PATH,
             )
         urls.add(version_url)
     return urls
@@ -456,21 +459,21 @@ def load_catalog_urls(path: Path) -> set[str]:
         raise fail(
             "catalog_json_invalid",
             f"catalog.json is malformed at line {error.lineno}, column {error.colno}: {error.msg}.",
-            path="src/api/json/catalog.json",
+            path=CATALOG_PATH,
         ) from error
     catalog = string_keyed_object(value)
     if catalog is None:
         raise fail(
             "catalog_structure_invalid",
             "catalog.json must contain a JSON object.",
-            path="src/api/json/catalog.json",
+            path=CATALOG_PATH,
         )
     schemas = object_list(catalog.get("schemas"))
     if schemas is None:
         raise fail(
             "catalog_structure_invalid",
             "catalog.json must contain a schemas array.",
-            path="src/api/json/catalog.json",
+            path=CATALOG_PATH,
         )
     urls: set[str] = set()
     for index, entry in enumerate(schemas):
@@ -501,8 +504,17 @@ def consume_jsonc_block_comment(text: str, index: int, output: list[str]) -> int
     raise fail(
         "schema_validation_jsonc_invalid",
         "schema-validation.jsonc contains an unterminated block comment.",
-        path="src/schema-validation.jsonc",
+        path=SCHEMA_VALIDATION_PATH,
     )
+
+
+def jsonc_string_state(character: str, *, escaped: bool) -> tuple[bool, bool]:
+    """Return the next in-string and escaped states for one string character."""
+    if escaped:
+        return (True, False)
+    if character == "\\":
+        return (True, True)
+    return (character != '"', False)
 
 
 def strip_jsonc_comments(text: str) -> str:
@@ -516,12 +528,7 @@ def strip_jsonc_comments(text: str) -> str:
         next_character = text[index + 1] if index + 1 < len(text) else ""
         if in_string:
             output.append(character)
-            if escaped:
-                escaped = False
-            elif character == "\\":
-                escaped = True
-            elif character == '"':
-                in_string = False
+            in_string, escaped = jsonc_string_state(character, escaped=escaped)
             index += 1
             continue
         if character == '"':
@@ -540,6 +547,16 @@ def strip_jsonc_comments(text: str) -> str:
     return "".join(output)
 
 
+def is_jsonc_trailing_comma(text: str, index: int) -> bool:
+    """Return whether the comma at an index precedes a closing delimiter."""
+    if text[index] != ",":
+        return False
+    lookahead = index + 1
+    while lookahead < len(text) and text[lookahead].isspace():
+        lookahead += 1
+    return lookahead < len(text) and text[lookahead] in "]}"
+
+
 def remove_jsonc_trailing_commas(text: str) -> str:
     """Remove only commas followed by a closing array or object delimiter."""
     output: list[str] = []
@@ -548,24 +565,15 @@ def remove_jsonc_trailing_commas(text: str) -> str:
     for index, character in enumerate(text):
         if in_string:
             output.append(character)
-            if escaped:
-                escaped = False
-            elif character == "\\":
-                escaped = True
-            elif character == '"':
-                in_string = False
+            in_string, escaped = jsonc_string_state(character, escaped=escaped)
             continue
         if character == '"':
             in_string = True
             output.append(character)
             continue
-        if character == ",":
-            lookahead = index + 1
-            while lookahead < len(text) and text[lookahead].isspace():
-                lookahead += 1
-            if lookahead < len(text) and text[lookahead] in "]}":
-                output.append(" ")
-                continue
+        if is_jsonc_trailing_comma(text, index):
+            output.append(" ")
+            continue
         output.append(character)
     return "".join(output)
 
@@ -582,14 +590,14 @@ def load_jsonc_object(path: Path) -> dict[str, object]:
         raise fail(
             "schema_validation_jsonc_invalid",
             (f"schema-validation.jsonc is malformed at line {error.lineno}, column {error.colno}: {error.msg}."),
-            path="src/schema-validation.jsonc",
+            path=SCHEMA_VALIDATION_PATH,
         ) from error
     config = string_keyed_object(value)
     if config is None:
         raise fail(
             "schema_validation_structure_invalid",
             "schema-validation.jsonc must contain a JSON object.",
-            path="src/schema-validation.jsonc",
+            path=SCHEMA_VALIDATION_PATH,
         )
     return config
 
@@ -602,16 +610,14 @@ def string_array(config: dict[str, object], key: str) -> set[str]:
         raise fail(
             "schema_validation_structure_invalid",
             f"schema-validation.jsonc {key} must be an array of strings.",
-            path="src/schema-validation.jsonc",
+            path=SCHEMA_VALIDATION_PATH,
         )
     return {cast("str", item) for item in items}
 
 
 def schema_filename_array(config: dict[str, object], key: str) -> set[str]:
     """Read and validate a schema-filename array from schema-validation.jsonc."""
-    return {
-        validate_schema_filename(item, source_path="src/schema-validation.jsonc") for item in string_array(config, key)
-    }
+    return {validate_schema_filename(item, source_path=SCHEMA_VALIDATION_PATH) for item in string_array(config, key)}
 
 
 def parse_validation_config(path: Path) -> ValidationConfig:
@@ -624,7 +630,7 @@ def parse_validation_config(path: Path) -> ValidationConfig:
         raise fail(
             "schema_validation_structure_invalid",
             "schema-validation.jsonc coverage must be an array.",
-            path="src/schema-validation.jsonc",
+            path=SCHEMA_VALIDATION_PATH,
         )
     coverage: dict[str, bool] = {}
     for index, entry in enumerate(raw_coverage):
@@ -633,7 +639,7 @@ def parse_validation_config(path: Path) -> ValidationConfig:
             raise fail(
                 "schema_validation_structure_invalid",
                 f"schema-validation.jsonc coverage[{index}] must be an object.",
-                path="src/schema-validation.jsonc",
+                path=SCHEMA_VALIDATION_PATH,
             )
         schema = coverage_entry.get("schema")
         strict = coverage_entry.get("strict", False)
@@ -641,9 +647,9 @@ def parse_validation_config(path: Path) -> ValidationConfig:
             raise fail(
                 "schema_validation_structure_invalid",
                 f"schema-validation.jsonc coverage[{index}] requires a string schema and optional boolean strict.",
-                path="src/schema-validation.jsonc",
+                path=SCHEMA_VALIDATION_PATH,
             )
-        validated_schema = validate_schema_filename(schema, source_path="src/schema-validation.jsonc")
+        validated_schema = validate_schema_filename(schema, source_path=SCHEMA_VALIDATION_PATH)
         coverage[validated_schema] = coverage.get(validated_schema, False) or strict
     return ValidationConfig(
         coverage=coverage,
@@ -723,14 +729,14 @@ def build_audit(
         for path in normalized_files
         if (schema_name := test_schema_from_path(path, "negative_test")) is not None
     )
-    catalog_changed = "src/api/json/catalog.json" in normalized_files
-    schema_validation_changed = "src/schema-validation.jsonc" in normalized_files
+    catalog_changed = CATALOG_PATH in normalized_files
+    schema_validation_changed = SCHEMA_VALIDATION_PATH in normalized_files
     deleted_critical_files = [
         path for path in normalized_files if is_critical_path(path) and not (repo / Path(path)).is_file()
     ]
 
-    catalog_urls = load_catalog_urls(repo / "src" / "api" / "json" / "catalog.json")
-    validation = parse_validation_config(repo / "src" / "schema-validation.jsonc")
+    catalog_urls = load_catalog_urls(repo / Path(CATALOG_PATH))
+    validation = parse_validation_config(repo / Path(SCHEMA_VALIDATION_PATH))
 
     missing_positive_tests = [
         schema_name
@@ -774,17 +780,18 @@ def build_audit(
 
     suggested_argv = [["npm", "clean-install"]]
     suggested_argv.extend(
-        ["node", "./cli.js", "check", f"--schema-name={schema_name}"]
+        ["node", SCHEMASTORE_CLI, "check", f"--schema-name={schema_name}"]
         for schema_name in local_schemas
         if schema_name not in validation.skip_tests
     )
     if schema_validation_changed or catalog_changed or len(local_schemas) != 1:
-        suggested_argv.append(["node", "./cli.js", "check"])
+        suggested_argv.append(["node", SCHEMASTORE_CLI, "check"])
     suggested_argv.extend(
-        ["node", "./cli.js", "coverage", f"--schema-name={schema_name}"] for schema_name in targeted_coverage_schemas
+        ["node", SCHEMASTORE_CLI, "coverage", f"--schema-name={schema_name}"]
+        for schema_name in targeted_coverage_schemas
     )
     if schema_validation_changed:
-        suggested_argv.append(["node", "./cli.js", "coverage"])
+        suggested_argv.append(["node", SCHEMASTORE_CLI, "coverage"])
     suggested_argv.extend(
         [
             ["npm", "run", "typecheck"],

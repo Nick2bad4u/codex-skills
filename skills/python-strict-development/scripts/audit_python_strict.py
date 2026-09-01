@@ -20,6 +20,7 @@ MatchMode = Literal["equals", "contains", "text-contains"]
 SemanticVersion = tuple[int, int, int]
 type JsonScalar = bool | float | int | str | None
 type JsonValue = JsonScalar | list[JsonValue] | dict[str, JsonValue]
+type ObjectList = list[object]
 STRICT_LINE_LENGTH = 120
 MINIMUM_RUFF_VERSION: SemanticVersion = (0, 15, 20)
 SEMANTIC_VERSION_COMPONENTS = 3
@@ -48,6 +49,11 @@ MAXIMUM_DEPENDENCY_FILE_BYTES = 5_000_000
 MAXIMUM_REQUIREMENT_ENTRIES = 5_000
 MAXIMUM_REQUIREMENT_LINE_LENGTH = 8_192
 SHA256_HEX_LENGTH = 64
+CACHE_DIRECTORY = ".cache"
+MYPY_CACHE_DIRECTORY = ".mypy_cache"
+PYTEST_CACHE_DIRECTORY = ".pytest_cache"
+RUFF_CACHE_DIRECTORY = ".ruff_cache"
+VENV_DIRECTORY = ".venv"
 SAFE_CHAIN_OPERATOR = "&&"
 UNSAFE_CHAIN_OPERATORS = frozenset({"&", ";", "|", "||"})
 NO_OP_FLAGS = frozenset({"--help", "--version", "-h", "-V"})
@@ -164,11 +170,11 @@ RUFF_CORE_SETTINGS = (
 )
 RUFF_REQUIRED_EXCLUSIONS = frozenset(
     {
-        ".cache",
-        ".mypy_cache",
-        ".pytest_cache",
-        ".ruff_cache",
-        ".venv",
+        CACHE_DIRECTORY,
+        MYPY_CACHE_DIRECTORY,
+        PYTEST_CACHE_DIRECTORY,
+        RUFF_CACHE_DIRECTORY,
+        VENV_DIRECTORY,
         "__pycache__",
         "build",
         "coverage",
@@ -182,16 +188,16 @@ RUFF_REQUIRED_EXCLUSIONS = frozenset(
 RUFF_ALLOWED_EXCLUSIONS = frozenset(
     {
         ".bzr",
-        ".cache",
+        CACHE_DIRECTORY,
         ".git",
         ".hg",
-        ".mypy_cache",
+        MYPY_CACHE_DIRECTORY,
         ".nox",
-        ".pytest_cache",
-        ".ruff_cache",
+        PYTEST_CACHE_DIRECTORY,
+        RUFF_CACHE_DIRECTORY,
         ".svn",
         ".tox",
-        ".venv",
+        VENV_DIRECTORY,
         "__pycache__",
         "__pypackages__",
         "build",
@@ -244,11 +250,11 @@ MYPY_ESSENTIAL_SETTINGS = (
 )
 MYPY_REQUIRED_EXCLUSIONS = frozenset(
     {
-        ".cache",
-        ".mypy_cache",
-        ".pytest_cache",
-        ".ruff_cache",
-        ".venv",
+        CACHE_DIRECTORY,
+        MYPY_CACHE_DIRECTORY,
+        PYTEST_CACHE_DIRECTORY,
+        RUFF_CACHE_DIRECTORY,
+        VENV_DIRECTORY,
         "__pycache__",
         "build",
         "coverage",
@@ -262,16 +268,16 @@ MYPY_REQUIRED_EXCLUSIONS = frozenset(
 MYPY_ALLOWED_EXCLUSIONS = frozenset(
     {
         ".bzr",
-        ".cache",
+        CACHE_DIRECTORY,
         ".git",
         ".hg",
-        ".mypy_cache",
+        MYPY_CACHE_DIRECTORY,
         ".nox",
-        ".pytest_cache",
-        ".ruff_cache",
+        PYTEST_CACHE_DIRECTORY,
+        RUFF_CACHE_DIRECTORY,
         ".svn",
         ".tox",
-        ".venv",
+        VENV_DIRECTORY,
         "__pycache__",
         "__pypackages__",
         "build",
@@ -451,26 +457,37 @@ VSCODE_RUFF_SETTINGS = (
     expected_true("ruff.organizeImports"),
 )
 
+CHECK_PYTHON_SCRIPT = "check:python"
+CHECK_PYTHON_UNSAFE_SCRIPT = "check:python:unsafe"
+COMPILE_PYTHON_SCRIPT = "compile:python"
+LINT_PYTHON_SCRIPT = "lint:python"
+LINT_PYTHON_UNSAFE_SCRIPT = "lint:python:unsafe"
+PYTHON_BOOTSTRAP_SCRIPT = "python:bootstrap"
+PYTHON_VENV_SCRIPT = "python:venv"
+TEST_PYTHON_SCRIPT = "test:python"
+TYPECHECK_PYTHON_SCRIPT = "typecheck:python"
 PACKAGE_SCRIPT_NAMES = (
-    "check:python",
-    "check:python:unsafe",
-    "compile:python",
+    CHECK_PYTHON_SCRIPT,
+    CHECK_PYTHON_UNSAFE_SCRIPT,
+    COMPILE_PYTHON_SCRIPT,
     "format:python",
-    "lint:python",
-    "lint:python:unsafe",
+    LINT_PYTHON_SCRIPT,
+    LINT_PYTHON_UNSAFE_SCRIPT,
     "pyright",
-    "python:bootstrap",
-    "python:venv",
+    PYTHON_BOOTSTRAP_SCRIPT,
+    PYTHON_VENV_SCRIPT,
     "ruff:check",
     "ruff:check:unsafe",
     "ruff:fix",
     "ruff:fix:unsafe",
     "ruff:format",
     "ruff:format:check",
-    "test:python",
-    "typecheck:python",
+    TEST_PYTHON_SCRIPT,
+    TYPECHECK_PYTHON_SCRIPT,
 )
-REQUIRED_CHECK_SCRIPTS = frozenset({"compile:python", "lint:python", "test:python", "typecheck:python"})
+REQUIRED_CHECK_SCRIPTS = frozenset(
+    {COMPILE_PYTHON_SCRIPT, LINT_PYTHON_SCRIPT, TEST_PYTHON_SCRIPT, TYPECHECK_PYTHON_SCRIPT}
+)
 PLACEHOLDER_WORDS = frozenset({"fixture", "noop", "placeholder"})
 CAPABILITY_CONTRACTS = {
     "ruff:check": frozenset({"ruff-check"}),
@@ -480,20 +497,22 @@ CAPABILITY_CONTRACTS = {
     "ruff:format": frozenset({"ruff-format"}),
     "ruff:format:check": frozenset({"ruff-format-check"}),
     "pyright": frozenset({"pyright"}),
-    "lint:python": frozenset({"ruff-check", "ruff-format-check"}),
-    "lint:python:unsafe": frozenset({"ruff-check-unsafe", "ruff-fix-unsafe"}),
+    LINT_PYTHON_SCRIPT: frozenset({"ruff-check", "ruff-format-check"}),
+    LINT_PYTHON_UNSAFE_SCRIPT: frozenset({"ruff-check-unsafe", "ruff-fix-unsafe"}),
     "format:python": frozenset({"ruff-fix", "ruff-format"}),
-    "typecheck:python": frozenset({"mypy", "pyright"}),
-    "test:python": frozenset({"pytest"}),
-    "compile:python": frozenset({"compileall"}),
-    "check:python": frozenset({"compileall", "mypy", "pyright", "pytest", "ruff-check", "ruff-format-check"}),
-    "check:python:unsafe": frozenset(
+    TYPECHECK_PYTHON_SCRIPT: frozenset({"mypy", "pyright"}),
+    TEST_PYTHON_SCRIPT: frozenset({"pytest"}),
+    COMPILE_PYTHON_SCRIPT: frozenset({"compileall"}),
+    CHECK_PYTHON_SCRIPT: frozenset({"compileall", "mypy", "pyright", "pytest", "ruff-check", "ruff-format-check"}),
+    CHECK_PYTHON_UNSAFE_SCRIPT: frozenset(
         {"compileall", "mypy", "pyright", "pytest", "ruff-check-unsafe", "ruff-fix-unsafe"}
     ),
 }
 AGGREGATE_SCRIPT_CONTRACTS = {
-    "check:python": REQUIRED_CHECK_SCRIPTS,
-    "check:python:unsafe": frozenset({"compile:python", "lint:python:unsafe", "test:python", "typecheck:python"}),
+    CHECK_PYTHON_SCRIPT: REQUIRED_CHECK_SCRIPTS,
+    CHECK_PYTHON_UNSAFE_SCRIPT: frozenset(
+        {COMPILE_PYTHON_SCRIPT, LINT_PYTHON_UNSAFE_SCRIPT, TEST_PYTHON_SCRIPT, TYPECHECK_PYTHON_SCRIPT}
+    ),
 }
 
 
@@ -559,12 +578,18 @@ def get_nested(data: object, *keys: str) -> object | None:
     return value
 
 
-def string_items(value: object) -> frozenset[str] | None:
-    """Return all items when a dynamic value is a list containing only strings."""
+def as_object_list(value: object) -> ObjectList | None:
+    """Return a dynamically loaded list with an explicit object element type."""
     if not isinstance(value, list):
         return None
+    return cast("ObjectList", value)
 
-    items = cast("list[object]", value)
+
+def string_items(value: object) -> frozenset[str] | None:
+    """Return all items when a dynamic value is a list containing only strings."""
+    items = as_object_list(value)
+    if items is None:
+        return None
     if not all(isinstance(item, str) for item in items):
         return None
 
@@ -598,8 +623,9 @@ def is_sensitive_key(key: str) -> bool:
 
 def collection_items(value: object) -> list[object] | None:
     """Return dynamic collection items with their element type made explicit."""
-    if isinstance(value, list):
-        return list(cast("list[object]", value))
+    items = as_object_list(value)
+    if items is not None:
+        return list(items)
     if isinstance(value, tuple):
         return list(cast("tuple[object, ...]", value))
     if isinstance(value, set):
@@ -607,6 +633,27 @@ def collection_items(value: object) -> list[object] | None:
     if isinstance(value, frozenset):
         return sorted(cast("frozenset[object]", value), key=lambda item: (type(item).__name__, str(item)[:80]))
     return None
+
+
+def bounded_structure_children(value: object, depth: int) -> tuple[str | None, list[tuple[object, int]]]:
+    """Return a bounded value's child work items or its first size violation."""
+    if isinstance(value, str):
+        error = "configuration contains an oversized string" if len(value) > MAXIMUM_CONFIG_STRING_LENGTH else None
+        return error, []
+
+    mapping = as_str_mapping(value)
+    if mapping is not None:
+        if len(mapping) > MAXIMUM_CONFIG_COLLECTION_ITEMS:
+            return "configuration contains an oversized object", []
+        return None, [(item, depth + 1) for item in mapping.values()]
+
+    items = collection_items(value)
+    if items is not None:
+        if len(items) > MAXIMUM_CONFIG_COLLECTION_ITEMS:
+            return "configuration contains an oversized collection", []
+        return None, [(item, depth + 1) for item in items]
+
+    return None, []
 
 
 def structure_limit_error(value: object) -> str | None:
@@ -620,19 +667,10 @@ def structure_limit_error(value: object) -> str | None:
             return "configuration exceeds the maximum node count"
         if depth > MAXIMUM_CONFIG_DEPTH:
             return "configuration exceeds the maximum nesting depth"
-        if isinstance(current, str):
-            if len(current) > MAXIMUM_CONFIG_STRING_LENGTH:
-                return "configuration contains an oversized string"
-            continue
-        if (mapping := as_str_mapping(current)) is not None:
-            if len(mapping) > MAXIMUM_CONFIG_COLLECTION_ITEMS:
-                return "configuration contains an oversized object"
-            stack.extend((item, depth + 1) for item in mapping.values())
-            continue
-        if (items := collection_items(current)) is not None:
-            if len(items) > MAXIMUM_CONFIG_COLLECTION_ITEMS:
-                return "configuration contains an oversized collection"
-            stack.extend((item, depth + 1) for item in items)
+        error, children = bounded_structure_children(current, depth)
+        if error is not None:
+            return error
+        stack.extend(children)
     return None
 
 
@@ -685,7 +723,10 @@ def json_safe(value: object, *, key: str = "") -> JsonValue:
             assign_json_value(parent, slot, scalar)
         elif mapping is not None:
             selected = sorted(mapping.items())[:MAXIMUM_DIAGNOSTIC_COLLECTION_ITEMS]
-            converted_mapping: dict[str, JsonValue] = {item_key: None for item_key, _item in selected}
+            converted_mapping: dict[str, JsonValue] = dict.fromkeys(
+                (item_key for item_key, _item in selected),
+                None,
+            )
             if len(mapping) > len(selected):
                 converted_mapping["<truncated>"] = len(mapping) - len(selected)
             assign_json_value(parent, slot, converted_mapping)
@@ -805,7 +846,12 @@ def string_list_policy(
     missing_count = len(required - items)
     unapproved_count = len(items - allowed)
     passed = missing_count == 0 and unapproved_count == 0
-    status = "accepted" if passed else "missing-required" if missing_count else "unapproved-addition"
+    if passed:
+        status = "accepted"
+    elif missing_count:
+        status = "missing-required"
+    else:
+        status = "unapproved-addition"
     return passed, {
         "status": status,
         "entry_count": len(items),
@@ -881,38 +927,51 @@ def ruff_exclusions_status(ruff: object) -> tuple[bool, JsonValue]:
     }
 
 
+def mypy_exclusion_name(escaped_name: str) -> str | None:
+    """Resolve one escaped path name against the documented exclusion allowlist."""
+    return next(
+        (candidate for candidate in MYPY_ALLOWED_EXCLUSIONS if candidate.replace(".", r"\.") == escaped_name),
+        None,
+    )
+
+
+def parse_mypy_exclusion_entry(body: str, index: int) -> tuple[str, int] | None:
+    """Parse one canonical ``(^|/)name/`` exclusion entry."""
+    if not body.startswith(MYPY_EXCLUSION_PREFIX, index):
+        return None
+    name_start = index + len(MYPY_EXCLUSION_PREFIX)
+    separator = body.find("/", name_start)
+    if separator < 0:
+        return None
+    name = mypy_exclusion_name(body[name_start:separator])
+    return None if name is None else (name, separator + 1)
+
+
 def parse_mypy_exclusions(value: object) -> frozenset[str] | None:
     """Parse only the canonical path-segment mypy exclusion regex grammar."""
-    compact = re.sub(r"\s+", "", value) if isinstance(value, str) else ""
-    valid = compact.startswith("(?x)(") and compact.endswith(")")
-    body = compact[5:-1] if valid else ""
+    if not isinstance(value, str):
+        return None
+    compact = re.sub(r"\s+", "", value)
+    if not compact.startswith("(?x)(") or not compact.endswith(")"):
+        return None
+
+    body = compact[5:-1]
     names: set[str] = set()
     index = 0
-    while valid and index < len(body):
-        if not body.startswith(MYPY_EXCLUSION_PREFIX, index):
-            valid = False
-            break
-        index += len(MYPY_EXCLUSION_PREFIX)
-        separator = body.find("/", index)
-        if separator < 0:
-            valid = False
-            break
-        escaped_name = body[index:separator]
-        name = next(
-            (candidate for candidate in MYPY_ALLOWED_EXCLUSIONS if candidate.replace(".", r"\.") == escaped_name),
-            None,
-        )
-        if name is None or name in names:
-            valid = False
-            break
+    while index < len(body):
+        entry = parse_mypy_exclusion_entry(body, index)
+        if entry is None:
+            return None
+        name, index = entry
+        if name in names:
+            return None
         names.add(name)
-        index = separator + 1
-        if index < len(body):
-            if body[index] != "|":
-                valid = False
-                break
-            index += 1
-    return frozenset(names) if valid and names else None
+        if index == len(body):
+            break
+        if body[index] != "|":
+            return None
+        index += 1
+    return frozenset(names) if names else None
 
 
 def mypy_exclusions_status(mypy: object) -> tuple[bool, JsonValue]:
@@ -1102,28 +1161,11 @@ def strip_jsonc_trailing_commas(source: str) -> str:
     """Remove commas before object or array endings without changing strings."""
     output: list[str] = []
     index = 0
-    in_string = False
-    escaped = False
-
     while index < len(source):
         character = source[index]
-        if in_string:
-            output.append(character)
-            if escaped:
-                escaped = False
-            elif character == "\\":
-                escaped = True
-            elif character == '"':
-                in_string = False
-            index += 1
-            continue
-
         if character == '"':
-            output.append(character)
-            in_string = True
-            index += 1
+            index = copy_json_string(source, index, output)
             continue
-
         if character == ",":
             lookahead = index + 1
             while lookahead < len(source) and source[lookahead].isspace():
@@ -1318,18 +1360,19 @@ def parse_script(value: str) -> ParsedScript:
     operators: list[str] = []
     current: list[str] = []
     for token in tokens:
-        if token and all(character in "&|;<>()" for character in token):
-            if not current:
-                return ParsedScript((), (), "empty command around an operator")
-            if token != SAFE_CHAIN_OPERATOR:
-                return ParsedScript((), (), "unsafe-or-unsupported-operator")
-            commands.append(tuple(current))
-            current = []
-            operators.append(token)
-            if len(commands) >= MAXIMUM_SCRIPT_COMMANDS:
-                return ParsedScript((), (), "command-count-limit")
-        else:
+        is_operator = bool(token) and all(character in "&|;<>()" for character in token)
+        if not is_operator:
             current.append(token)
+            continue
+        if not current:
+            return ParsedScript((), (), "empty command around an operator")
+        if token != SAFE_CHAIN_OPERATOR:
+            return ParsedScript((), (), "unsafe-or-unsupported-operator")
+        commands.append(tuple(current))
+        current = []
+        operators.append(token)
+        if len(commands) >= MAXIMUM_SCRIPT_COMMANDS:
+            return ParsedScript((), (), "command-count-limit")
     if not current:
         return ParsedScript((), (), "empty command")
     commands.append(tuple(current))
@@ -1408,20 +1451,19 @@ def ruff_capability(command: tuple[str, ...]) -> str | None:
     arguments = tool_arguments(command, "ruff")
     if not arguments or arguments_have_flags(arguments, NO_OP_FLAGS):
         return None
-    operation = arguments[0]
     allowed_options = {"format": frozenset({"--check"}), "check": frozenset({"--fix", "--unsafe-fixes"})}
-    capability: str | None = None
-    if operation in allowed_options:
-        options = frozenset(argument for argument in arguments[1:] if argument.startswith("-"))
-        targets = tuple(argument for argument in arguments[1:] if not argument.startswith("-"))
-        if options.issubset(allowed_options[operation]) and targets:
-            if operation == "format":
-                capability = "ruff-format-check" if "--check" in options else "ruff-format"
-            elif "--fix" in options:
-                capability = "ruff-fix-unsafe" if "--unsafe-fixes" in options else "ruff-fix"
-            else:
-                capability = "ruff-check-unsafe" if "--unsafe-fixes" in options else "ruff-check"
-    return capability
+    operation = arguments[0]
+    if operation not in allowed_options:
+        return None
+    options = frozenset(argument for argument in arguments[1:] if argument.startswith("-"))
+    targets = tuple(argument for argument in arguments[1:] if not argument.startswith("-"))
+    if not options.issubset(allowed_options[operation]) or not targets:
+        return None
+    if operation == "format":
+        return "ruff-format-check" if "--check" in options else "ruff-format"
+    if "--fix" in options:
+        return "ruff-fix-unsafe" if "--unsafe-fixes" in options else "ruff-fix"
+    return "ruff-check-unsafe" if "--unsafe-fixes" in options else "ruff-check"
 
 
 def compileall_capability(command: tuple[str, ...]) -> str | None:
@@ -1469,28 +1511,32 @@ def node_helper_capabilities(command: tuple[str, ...]) -> frozenset[str] | None:
     return frozenset() if not arguments else None
 
 
+def typechecker_capabilities(command: tuple[str, ...]) -> frozenset[str] | None:
+    """Recognize an unscoped mypy or Pyright invocation."""
+    for tool in ("mypy", "pyright"):
+        arguments = tool_arguments(command, tool)
+        if arguments is not None:
+            return frozenset({tool}) if not arguments else None
+    return None
+
+
 def command_capabilities(command: tuple[str, ...]) -> frozenset[str] | None:
     """Return strict capabilities for one fully modeled non-alias command."""
     if not command or command_has_shell_expansion(command):
         return None
-    capabilities: frozenset[str] | None = None
-    if (ruff := ruff_capability(command)) is not None:
-        capabilities = frozenset({ruff})
-    elif (compileall := compileall_capability(command)) is not None:
-        capabilities = frozenset({compileall})
-    else:
-        for tool in ("mypy", "pyright"):
-            arguments = tool_arguments(command, tool)
-            if arguments is not None:
-                if not arguments:
-                    capabilities = frozenset({tool})
-                break
-        pytest_arguments = tool_arguments(command, "pytest")
-        if pytest_arguments is not None and pytest_arguments_are_enforcing(pytest_arguments):
-            capabilities = frozenset({"pytest"})
-        if capabilities is None:
-            capabilities = node_helper_capabilities(command)
-    return capabilities
+    ruff = ruff_capability(command)
+    if ruff is not None:
+        return frozenset({ruff})
+    compileall = compileall_capability(command)
+    if compileall is not None:
+        return frozenset({compileall})
+    typechecker = typechecker_capabilities(command)
+    if typechecker is not None:
+        return typechecker
+    pytest_arguments = tool_arguments(command, "pytest")
+    if pytest_arguments is not None:
+        return frozenset({"pytest"}) if pytest_arguments_are_enforcing(pytest_arguments) else None
+    return node_helper_capabilities(command)
 
 
 def direct_capabilities(parsed: ParsedScript) -> frozenset[str]:
@@ -1678,7 +1724,7 @@ def bootstrap_profile(parsed: ParsedScript) -> DependencyProfile | None:
 def is_venv_command(command: tuple[str, ...]) -> bool:
     """Recognize creation of the documented repository-local virtual environment."""
     arguments = tool_arguments(command, "venv")
-    return interpreter_kind(command) == "global" and arguments == (".venv",)
+    return interpreter_kind(command) == "global" and arguments == (VENV_DIRECTORY,)
 
 
 def is_activation_command(command: tuple[str, ...]) -> bool:
@@ -1825,42 +1871,56 @@ def package_artifacts_are_secure(package: dict[str, object]) -> bool:
     artifacts: list[object] = []
     wheels = raw_value(package, "wheels")
     if wheels is not None:
-        if not isinstance(wheels, list):
+        wheel_items = as_object_list(wheels)
+        if wheel_items is None:
             return False
-        artifacts.extend(cast("list[object]", wheels))
+        artifacts.extend(wheel_items)
     source_distribution = raw_value(package, "sdist")
     if source_distribution is not None:
         artifacts.append(source_distribution)
     return bool(artifacts) and all(artifact_is_secure(artifact) for artifact in artifacts)
 
 
+def secure_lock_package_record(
+    package_value: object,
+    *,
+    require_all_artifacts: bool,
+) -> tuple[str, str] | None:
+    """Validate one lock package and return its normalized name and pinned version."""
+    package = as_str_mapping(package_value)
+    if package is None:
+        return None
+    name = raw_value(package, "name")
+    version = raw_value(package, "version")
+    if (
+        not isinstance(name, str)
+        or not name
+        or not isinstance(version, str)
+        or PINNED_VERSION_PATTERN.fullmatch(version) is None
+    ):
+        return None
+    normalized_name = normalized_package_name(name)
+    source = as_str_mapping(raw_value(package, "source"))
+    artifacts_required = (
+        require_all_artifacts or source is None or "registry" in source or normalized_name in REQUIRED_TOOL_NAMES
+    )
+    if artifacts_required and not package_artifacts_are_secure(package):
+        return None
+    return normalized_name, version
+
+
 def lock_package_versions(packages_value: object, *, require_all_artifacts: bool) -> dict[str, str] | None:
     """Validate bounded lock package records and return normalized versions."""
-    if not isinstance(packages_value, list) or not packages_value:
+    packages = as_object_list(packages_value)
+    if not packages:
         return None
     versions: dict[str, str] = {}
-    for package_value in cast("list[object]", packages_value):
-        package = as_str_mapping(package_value)
-        if package is None:
+    for package_value in packages:
+        record = secure_lock_package_record(package_value, require_all_artifacts=require_all_artifacts)
+        if record is None:
             return None
-        name = raw_value(package, "name")
-        version = raw_value(package, "version")
-        if (
-            not isinstance(name, str)
-            or not name
-            or not isinstance(version, str)
-            or PINNED_VERSION_PATTERN.fullmatch(version) is None
-        ):
-            return None
-        normalized_name = normalized_package_name(name)
+        normalized_name, version = record
         if normalized_name in versions and versions[normalized_name] != version:
-            return None
-        source = as_str_mapping(raw_value(package, "source"))
-        is_registry_package = source is None or "registry" in source
-        artifacts_secure = package_artifacts_are_secure(package)
-        if (
-            require_all_artifacts or is_registry_package or normalized_name in REQUIRED_TOOL_NAMES
-        ) and not artifacts_secure:
             return None
         versions[normalized_name] = version
     return versions
@@ -1997,22 +2057,22 @@ def apply_bootstrap_contracts(
     ruff_minimum: SemanticVersion,
 ) -> None:
     """Add issues when dependency setup is absent, unlocked, or internally inconsistent."""
-    bootstrap = parsed_scripts.get("python:bootstrap")
-    venv = parsed_scripts.get("python:venv")
+    bootstrap = parsed_scripts.get(PYTHON_BOOTSTRAP_SCRIPT)
+    venv = parsed_scripts.get(PYTHON_VENV_SCRIPT)
     bootstrap_selected = bootstrap_profile(bootstrap or ParsedScript((), (), "missing"))
     venv_selected = venv_profile(venv or ParsedScript((), (), "missing"))
     if bootstrap_selected is None:
-        issues["python:bootstrap"] = {"issue": "unaccepted-dependency-profile"}
+        issues[PYTHON_BOOTSTRAP_SCRIPT] = {"issue": "unaccepted-dependency-profile"}
     else:
         validation = dependency_source_is_secure(root, bootstrap_selected, ruff_minimum)
         if not validation.passed:
-            issues["python:bootstrap"] = {
+            issues[PYTHON_BOOTSTRAP_SCRIPT] = {
                 "issue": "dependency-source-missing-or-invalid",
                 "exists": validation.exists,
                 **profile_report(bootstrap_selected),
             }
     if venv_selected is None or bootstrap_selected != venv_selected:
-        issues["python:venv"] = {
+        issues[PYTHON_VENV_SCRIPT] = {
             "issue": "profile-mismatch",
             "expected": profile_report(bootstrap_selected),
             "actual": profile_report(venv_selected),
@@ -2374,6 +2434,7 @@ def audit_pyproject(root: Path, diagnostics: list[Diagnostic]) -> SemanticVersio
             expected=(expected_true("strict"),),
         ),
     )
+    enabled_codes = string_items(raw_value(mypy, "enable_error_code"))
     add_check(
         diagnostics,
         "mypy.error-codes",
@@ -2381,10 +2442,7 @@ def audit_pyproject(root: Path, diagnostics: list[Diagnostic]) -> SemanticVersio
             failure="mypy should enable the strict profile's extra error codes.",
             success="mypy extra error codes match the strict profile.",
         ),
-        passed=(
-            (enabled_codes := string_items(raw_value(mypy, "enable_error_code"))) is not None
-            and MYPY_EXTRA_ERROR_CODES.issubset(enabled_codes)
-        ),
+        passed=enabled_codes is not None and MYPY_EXTRA_ERROR_CODES.issubset(enabled_codes),
         context=DiagnosticContext(
             expected=json_safe({"enable_error_code": sorted(MYPY_EXTRA_ERROR_CODES)}),
             actual={"enable_error_code": json_safe(raw_value(mypy, "enable_error_code"))},

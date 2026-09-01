@@ -33,6 +33,19 @@ PACKAGE_JSON = "package.json"
 PACKAGE_LOCK_JSON = "package-lock.json"
 NPM_SHRINKWRAP_JSON = "npm-shrinkwrap.json"
 PYPROJECT_TOML = "pyproject.toml"
+PNPM_LOCK_YAML = "pnpm-lock.yaml"
+YARN_LOCK = "yarn.lock"
+YARN_CONFIG = ".yarnrc.yml"
+BUN_LOCK = "bun.lock"
+BUN_BINARY_LOCK = "bun.lockb"
+UV_LOCK = "uv.lock"
+UV_CONFIG = "uv.toml"
+POETRY_LOCK = "poetry.lock"
+GO_MOD = "go.mod"
+CARGO_TOML = "Cargo.toml"
+DOTNET_PROJECT_SUFFIX = ".csproj"
+PACKAGES_LOCK_JSON = "packages.lock.json"
+EMPTY_LIST_ENTRY = "  - none"
 NODE_MANAGERS = ("npm", "pnpm", "yarn", "bun")
 NPM_SHRINKWRAP_MAX_MAJOR = 11
 PORCELAIN_PATH_OFFSET = 3
@@ -47,37 +60,37 @@ REQUIREMENT_PATTERN = re.compile(r"requirements(?:[-_.][^/]+)?\.(?:in|txt)")
 DEPENDENCY_REQUIREMENT_PATTERN = re.compile(r"requirements(?:[-_.][^/]+)?\.(?:in|lock|txt)")
 NODE_MARKERS = {
     "npm": (PACKAGE_LOCK_JSON, NPM_SHRINKWRAP_JSON, ".npmrc"),
-    "pnpm": ("pnpm-lock.yaml", "pnpm-workspace.yaml"),
-    "yarn": ("yarn.lock", ".yarnrc.yml"),
-    "bun": ("bun.lock", "bun.lockb", "bunfig.toml"),
+    "pnpm": (PNPM_LOCK_YAML, "pnpm-workspace.yaml"),
+    "yarn": (YARN_LOCK, YARN_CONFIG),
+    "bun": (BUN_LOCK, BUN_BINARY_LOCK, "bunfig.toml"),
 }
 FROZEN_INSTALL_LOCKS = {
     "npm": (PACKAGE_LOCK_JSON,),
-    "pnpm": ("pnpm-lock.yaml",),
-    "yarn": ("yarn.lock",),
-    "bun": ("bun.lock", "bun.lockb"),
-    "uv": ("uv.lock",),
-    "poetry": ("poetry.lock",),
+    "pnpm": (PNPM_LOCK_YAML,),
+    "yarn": (YARN_LOCK,),
+    "bun": (BUN_LOCK, BUN_BINARY_LOCK),
+    "uv": (UV_LOCK,),
+    "poetry": (POETRY_LOCK,),
 }
 DEPENDENCY_SURFACE_NAMES = {
     PACKAGE_JSON,
     PACKAGE_LOCK_JSON,
     NPM_SHRINKWRAP_JSON,
     ".npmrc",
-    "pnpm-lock.yaml",
+    PNPM_LOCK_YAML,
     "pnpm-workspace.yaml",
-    "yarn.lock",
-    ".yarnrc.yml",
-    "bun.lock",
-    "bun.lockb",
+    YARN_LOCK,
+    YARN_CONFIG,
+    BUN_LOCK,
+    BUN_BINARY_LOCK,
     "bunfig.toml",
     PYPROJECT_TOML,
-    "uv.lock",
-    "uv.toml",
-    "poetry.lock",
-    "go.mod",
+    UV_LOCK,
+    UV_CONFIG,
+    POETRY_LOCK,
+    GO_MOD,
     "go.sum",
-    "Cargo.toml",
+    CARGO_TOML,
     "Cargo.lock",
     "Directory.Packages.props",
 }
@@ -531,9 +544,9 @@ def yarn_variant(root: Path, directory: str, declared_version: str | None) -> st
     declared_major = package_manager_major(declared_version)
     if declared_major is not None:
         return "classic" if declared_major <= 1 else "modern"
-    if path_exists(root, directory_path(directory, ".yarnrc.yml")):
+    if path_exists(root, directory_path(directory, YARN_CONFIG)):
         return "modern"
-    lock_text = read_text(root, directory, "yarn.lock")
+    lock_text = read_text(root, directory, YARN_LOCK)
     if "# yarn lockfile v1" in lock_text:
         return "classic"
     return "modern"
@@ -684,17 +697,17 @@ def choose_python_owner(root: Path, directory: str) -> tuple[DependencyOwner | N
     pyproject_exists = path_exists(root, directory_path(directory, PYPROJECT_TOML))
     has_project, has_uv_config, has_poetry_config = pyproject_sections(root, directory)
     requirements = current_requirement_names(root, directory)
-    has_uv_lock = path_exists(root, directory_path(directory, "uv.lock"))
-    has_uv_toml = path_exists(root, directory_path(directory, "uv.toml"))
-    has_poetry_lock = path_exists(root, directory_path(directory, "poetry.lock"))
+    has_uv_lock = path_exists(root, directory_path(directory, UV_LOCK))
+    has_uv_toml = path_exists(root, directory_path(directory, UV_CONFIG))
+    has_poetry_lock = path_exists(root, directory_path(directory, POETRY_LOCK))
     warnings: list[str] = []
     if not pyproject_exists:
         orphan_markers = [
             marker
             for marker, present in (
-                ("uv.lock", has_uv_lock),
-                ("uv.toml", has_uv_toml),
-                ("poetry.lock", has_poetry_lock),
+                (UV_LOCK, has_uv_lock),
+                (UV_CONFIG, has_uv_toml),
+                (POETRY_LOCK, has_poetry_lock),
             )
             if present
         ]
@@ -744,6 +757,51 @@ def is_ancestor(ancestor: str, directory: str) -> bool:
     return directory.startswith(f"{ancestor}/")
 
 
+def choose_scoped_node_owner(
+    root: Path,
+    directory: str,
+    ancestor_node_directories: list[str],
+) -> tuple[DependencyOwner | None, list[str]]:
+    """Resolve a Node owner while enforcing explicit nested owner boundaries."""
+    node_owner, node_warnings = choose_node_owner(root, directory)
+    ancestor_node = next(
+        (ancestor for ancestor in ancestor_node_directories if is_ancestor(ancestor, directory)),
+        None,
+    )
+    package_exists = path_exists(root, directory_path(directory, PACKAGE_JSON))
+    declaration = package_manager_declaration(root, directory)
+    if ancestor_node is None or not package_exists or declaration is not None or node_owner is None:
+        return (node_owner, node_warnings)
+
+    warning = scoped_warning(
+        directory,
+        " ".join(
+            (
+                f"Nested Node markers remain under ancestor owner {ancestor_node};",
+                "an explicit packageManager declaration is required for an independent owner boundary.",
+            )
+        ),
+    )
+    return (None, [warning])
+
+
+def detect_non_node_owners(root: Path, directory: str) -> tuple[list[DependencyOwner], list[str]]:
+    """Detect current Python, Go, Rust, and .NET owners in one directory."""
+    owners: list[DependencyOwner] = []
+    python_owner, warnings = choose_python_owner(root, directory)
+    if python_owner is not None:
+        owners.append(python_owner)
+
+    for manager, marker in (("go", GO_MOD), ("rust", CARGO_TOML)):
+        if path_exists(root, directory_path(directory, marker)):
+            owners.append(DependencyOwner(directory, manager))
+
+    current_names = current_file_names(root, directory)
+    if any(name.endswith((DOTNET_PROJECT_SUFFIX, PACKAGES_LOCK_JSON)) for name in current_names):
+        owners.append(DependencyOwner(directory, "dotnet"))
+    return (owners, warnings)
+
+
 def detect_dependency_owners(root: Path, changed_files: list[str]) -> tuple[list[DependencyOwner], list[str]]:
     """Detect executable owners only from surviving directories and current files."""
     owners: list[DependencyOwner] = []
@@ -752,44 +810,15 @@ def detect_dependency_owners(root: Path, changed_files: list[str]) -> tuple[list
     for directory in candidate_directories(changed_files):
         if not directory_exists(root, directory):
             continue
-        package_exists = path_exists(root, directory_path(directory, PACKAGE_JSON))
-        declaration = package_manager_declaration(root, directory)
-        ancestor_node = next(
-            (ancestor for ancestor in ancestor_node_directories if is_ancestor(ancestor, directory)),
-            None,
-        )
-        node_owner, node_warnings = choose_node_owner(root, directory)
-        if ancestor_node is not None and package_exists and declaration is None and node_owner is not None:
-            warnings.append(
-                scoped_warning(
-                    directory,
-                    " ".join(
-                        (
-                            f"Nested Node markers remain under ancestor owner {ancestor_node};",
-                            "an explicit packageManager declaration is required for an independent owner boundary.",
-                        )
-                    ),
-                )
-            )
-            node_owner = None
-        else:
-            warnings.extend(node_warnings)
+        node_owner, node_warnings = choose_scoped_node_owner(root, directory, ancestor_node_directories)
+        warnings.extend(node_warnings)
         if node_owner is not None:
             owners.append(node_owner)
             ancestor_node_directories.append(directory)
 
-        python_owner, python_warnings = choose_python_owner(root, directory)
-        warnings.extend(python_warnings)
-        if python_owner is not None:
-            owners.append(python_owner)
-
-        if path_exists(root, directory_path(directory, "go.mod")):
-            owners.append(DependencyOwner(directory, "go"))
-        if path_exists(root, directory_path(directory, "Cargo.toml")):
-            owners.append(DependencyOwner(directory, "rust"))
-        current_names = current_file_names(root, directory)
-        if any(name.endswith((".csproj", "packages.lock.json")) for name in current_names):
-            owners.append(DependencyOwner(directory, "dotnet"))
+        non_node_owners, non_node_warnings = detect_non_node_owners(root, directory)
+        owners.extend(non_node_owners)
+        warnings.extend(non_node_warnings)
 
     if any(
         changed_path_is_confined(root, path)
@@ -850,9 +879,9 @@ def python_marker_inventory(
         if owner.cwd == directory and owner.manager in {"uv", "poetry", "pip"}
     ]
     inventory = list(selected)
-    if "poetry.lock" in evidence_names:
+    if POETRY_LOCK in evidence_names:
         inventory.append("poetry")
-    has_python_marker = bool({PYPROJECT_TOML, "uv.lock", "uv.toml"} & evidence_names) or any(
+    has_python_marker = bool({PYPROJECT_TOML, UV_LOCK, UV_CONFIG} & evidence_names) or any(
         DEPENDENCY_REQUIREMENT_PATTERN.fullmatch(name) for name in evidence_names
     )
     if has_python_marker:
@@ -870,10 +899,10 @@ def marker_inventory(root: Path, changed_files: list[str], owners: list[Dependen
         inventory.extend(node_marker_inventory(root, directory, evidence_names))
         inventory.extend(python_marker_inventory(directory, evidence_names, owners))
 
-        for manager, marker in (("go", "go.mod"), ("rust", "Cargo.toml")):
+        for manager, marker in (("go", GO_MOD), ("rust", CARGO_TOML)):
             if marker in evidence_names:
                 inventory.append(manager)
-        if any(name.endswith((".csproj", "packages.lock.json")) for name in evidence_names):
+        if any(name.endswith((DOTNET_PROJECT_SUFFIX, PACKAGES_LOCK_JSON)) for name in evidence_names):
             inventory.append("dotnet")
 
     if any(owner.manager == "github-actions" for owner in owners):
@@ -921,13 +950,13 @@ def frozen_install_locks(owner: DependencyOwner) -> tuple[str, ...] | None:
     return FROZEN_INSTALL_LOCKS.get(owner.manager)
 
 
-def install_argv_for_owner(root: Path, owner: DependencyOwner) -> tuple[str, ...] | None:
+def install_argv_for_owner(root: Path, owner: DependencyOwner) -> list[str] | None:
     """Return frozen-install argv only when its current lock survives."""
     if owner.manager == "pip":
         requirements = current_requirements_for_owner(root, owner)
         if requirements:
             preferred = "requirements-dev.txt" if "requirements-dev.txt" in requirements else requirements[0]
-            return ("python", "-m", "pip", "install", "-r", preferred)
+            return ["python", "-m", "pip", "install", "-r", preferred]
         return None
 
     required_locks = frozen_install_locks(owner)
@@ -935,14 +964,14 @@ def install_argv_for_owner(root: Path, owner: DependencyOwner) -> tuple[str, ...
         return None
     if owner.manager == "yarn":
         if owner.variant == "classic":
-            return ("yarn", "install", "--frozen-lockfile")
-        return ("yarn", "install", "--immutable")
+            return ["yarn", "install", "--frozen-lockfile"]
+        return ["yarn", "install", "--immutable"]
     commands = {
-        "npm": ("npm", "ci"),
-        "pnpm": ("pnpm", "install", "--frozen-lockfile"),
-        "bun": ("bun", "install", "--frozen-lockfile"),
-        "uv": ("uv", "sync", "--frozen"),
-        "poetry": ("poetry", "sync"),
+        "npm": ["npm", "ci"],
+        "pnpm": ["pnpm", "install", "--frozen-lockfile"],
+        "bun": ["bun", "install", "--frozen-lockfile"],
+        "uv": ["uv", "sync", "--frozen"],
+        "poetry": ["poetry", "sync"],
     }
     return commands.get(owner.manager)
 
@@ -959,11 +988,11 @@ def build_install_command_specs(root: Path, owners: list[DependencyOwner]) -> li
     return dedupe_specs(commands)
 
 
-def node_script_argv(manager: str, script: str) -> tuple[str, ...]:
+def node_script_argv(manager: str, script: str) -> list[str]:
     """Return the native package-manager argv for one package script."""
     if manager == "yarn":
-        return ("yarn", script)
-    return (manager, "run", script)
+        return ["yarn", script]
+    return [manager, "run", script]
 
 
 def build_validation_command_specs(root: Path, owners: list[DependencyOwner]) -> list[CommandSpec]:
@@ -999,11 +1028,11 @@ def build_validation_command_specs(root: Path, owners: list[DependencyOwner]) ->
     return dedupe_specs(commands)
 
 
-def yarn_update_argv(owner: DependencyOwner) -> tuple[str, ...]:
+def yarn_update_argv(owner: DependencyOwner) -> list[str]:
     """Return the generation-appropriate Yarn update command."""
     if owner.variant == "classic":
-        return ("yarn", "upgrade", "--latest")
-    return ("yarn", "upgrade-interactive")
+        return ["yarn", "upgrade", "--latest"]
+    return ["yarn", "upgrade-interactive"]
 
 
 def build_update_command_specs(
@@ -1027,13 +1056,14 @@ def build_update_command_specs(
                 for script in DIRECT_UPDATE_SCRIPTS
                 if script in scripts
             )
-        argv = MANAGER_UPDATE_ARGV.get(owner.manager)
+        manager_argv = MANAGER_UPDATE_ARGV.get(owner.manager)
+        argv = list(manager_argv) if manager_argv is not None else None
         if owner.manager == "yarn":
             argv = yarn_update_argv(owner)
         elif owner.manager == "pip":
             requirements = current_requirements_for_owner(root, owner)
             if requirements:
-                argv = ("python", "-m", "pip", "install", "--upgrade", "-r", requirements[0])
+                argv = ["python", "-m", "pip", "install", "--upgrade", "-r", requirements[0]]
         if argv is not None:
             commands.append(command_spec(owner.cwd, *argv))
     return dedupe_specs(commands)
@@ -1044,13 +1074,15 @@ def manifest_and_lock_names(owner: DependencyOwner, changed_names: set[str]) -> 
     if owner.manager in NODE_MANAGERS:
         return ({PACKAGE_JSON}, set(frozen_install_locks(owner) or ()))
     if owner.manager == "dotnet":
-        manifests = {name for name in changed_names if name.endswith(".csproj")} | {"Directory.Packages.props"}
-        return (manifests, {"packages.lock.json"})
+        manifests = {name for name in changed_names if name.endswith(DOTNET_PROJECT_SUFFIX)} | {
+            "Directory.Packages.props"
+        }
+        return (manifests, {PACKAGES_LOCK_JSON})
     names_by_manager = {
-        "uv": ({PYPROJECT_TOML, "uv.toml"}, {"uv.lock"}),
-        "poetry": ({PYPROJECT_TOML}, {"poetry.lock"}),
-        "go": ({"go.mod"}, {"go.sum"}),
-        "rust": ({"Cargo.toml"}, {"Cargo.lock"}),
+        "uv": ({PYPROJECT_TOML, UV_CONFIG}, {UV_LOCK}),
+        "poetry": ({PYPROJECT_TOML}, {POETRY_LOCK}),
+        "go": ({GO_MOD}, {"go.sum"}),
+        "rust": ({CARGO_TOML}, {"Cargo.lock"}),
     }
     return names_by_manager.get(owner.manager, (set(), set()))
 
@@ -1253,7 +1285,7 @@ def write_owner_list(label: str, owners: list[DependencyOwner]) -> None:
     """Write structured owners as compact JSON entries."""
     write_line(f"{label}:")
     if not owners:
-        write_line("  - none")
+        write_line(EMPTY_LIST_ENTRY)
         return
     for owner in owners:
         write_line(f"  - {json.dumps(asdict(owner), ensure_ascii=False)}")
@@ -1263,7 +1295,7 @@ def write_command_specs(label: str, commands: list[CommandSpec]) -> None:
     """Write structured commands as compact JSON entries."""
     write_line(f"{label}:")
     if not commands:
-        write_line("  - none")
+        write_line(EMPTY_LIST_ENTRY)
         return
     for command in commands:
         write_line(f"  - {json.dumps(asdict(command), ensure_ascii=False)}")
@@ -1273,7 +1305,7 @@ def write_list(label: str, values: list[str]) -> None:
     """Write a labelled list."""
     write_line(f"{label}:")
     if not values:
-        write_line("  - none")
+        write_line(EMPTY_LIST_ENTRY)
         return
     for value in values:
         write_line(f"  - {value}")
