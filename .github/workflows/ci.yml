@@ -49,13 +49,13 @@ jobs:
               with:
                   python-version: "3.14"
                   cache: "pip"
-                  cache-dependency-path: "requirements-dev.lock"
+                  cache-dependency-path: "requirements-dev.in"
 
             - name: "Install Node"
               run: "npm ci"
 
             - name: "Install Python"
-              run: "python -m pip install --require-hashes -r requirements-dev.lock"
+              run: "python -m pip install --require-hashes -r requirements-dev.in"
 
             - name: "Validate"
               run: "npm run release:verify"

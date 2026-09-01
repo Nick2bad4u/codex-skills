@@ -40,3 +40,15 @@ updates:
       patterns:
           - "*"
       versioning-strategy: "increase"
+
+    - package-ecosystem: "pip"
+      directory: "/"
+      cooldown:
+          default-days: 3
+          include: ["*"]
+      multi-ecosystem-group: "dependabot-all"
+      labels:
+          - "pip"
+      patterns:
+          - "*"
+      versioning-strategy: "increase"
