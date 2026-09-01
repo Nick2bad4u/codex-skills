@@ -233,9 +233,10 @@ def test_resolved_oauth_credential_is_rejected_outside_authorization(arguments: 
     """A credential cannot be hidden in a path, query, or body."""
     build_plan = cast("Callable[[argparse.Namespace, object], RequestPlanView]", member("build_plan"))
     helper_error = cast("type[Exception]", member("GoogleTagManagerCliError"))
+    active_context = context()
 
     with pytest.raises(helper_error) as caught:
-        _ = build_plan(arguments, context())
+        _ = build_plan(arguments, active_context)
 
     assert "Authorization header" in str(caught.value)
     assert TEST_CREDENTIAL not in str(caught.value)
@@ -265,8 +266,10 @@ def test_send_rechecks_credential_before_constructing_transport(monkeypatch: pyt
         raise AssertionError("Transport must not be constructed for credential reuse.")
 
     monkeypatch.setattr(request, "build_opener", build_opener)
+    active_credential = credential()
+    request_runtime = argparse.Namespace(retries=0, timeout=1.0)
     with pytest.raises(helper_error, match="Authorization header"):
-        _ = send(plan, plan.url, credential(), argparse.Namespace(retries=0, timeout=1.0))
+        _ = send(plan, plan.url, active_credential, request_runtime)
     assert not opener_built
 
 
@@ -279,11 +282,13 @@ def test_non_standard_json_numbers_are_rejected_without_partial_output(
     load_body = cast("Callable[[argparse.Namespace], JsonValue]", member("load_body"))
     response_payload = cast("Callable[[bytes, str], JsonValue]", member("response_payload"))
     helper_error = cast("type[Exception]", member("GoogleTagManagerCliError"))
+    arguments = argparse.Namespace(body_file=None, body_json=value)
+    encoded_value = value.encode()
 
     with pytest.raises(helper_error, match="standards-compliant"):
-        _ = load_body(argparse.Namespace(body_file=None, body_json=value))
+        _ = load_body(arguments)
     with pytest.raises(helper_error, match="standards-compliant"):
-        _ = response_payload(value.encode(), "application/json")
+        _ = response_payload(encoded_value, "application/json")
     assert capsys.readouterr().out == ""
 
 
@@ -292,8 +297,9 @@ def test_json_output_rejects_non_finite_values_before_writing(capsys: pytest.Cap
     write_json = cast("Callable[[JsonValue], None]", member("write_json"))
     helper_error = cast("type[Exception]", member("GoogleTagManagerCliError"))
 
+    non_finite_payload: JsonValue = {"value": float("nan")}
     with pytest.raises(helper_error, match="non-finite"):
-        write_json({"value": float("nan")})
+        write_json(non_finite_payload)
     assert capsys.readouterr().out == ""
 
 
@@ -350,8 +356,10 @@ def test_preview_result_and_transport_errors_defensively_redact_known_token(
         return FailingOpener()
 
     monkeypatch.setattr(request, "build_opener", build_failing_opener)
+    active_credential = credential()
+    request_runtime = argparse.Namespace(retries=0, timeout=1.0)
     with pytest.raises(helper_error) as caught:
-        _ = send(safe_plan, safe_plan.url, credential(), argparse.Namespace(retries=0, timeout=1.0))
+        _ = send(safe_plan, safe_plan.url, active_credential, request_runtime)
     assert TEST_CREDENTIAL not in str(caught.value)
     assert "<redacted>" in str(caught.value)
 
@@ -394,8 +402,9 @@ def test_local_discovery_enforces_exact_actual_byte_boundary(
     assert load_discovery(arguments, context()) == json.loads(document)
 
     monkeypatch.setattr(GTM, "MAX_DISCOVERY_DOCUMENT_BYTES", len(document) - 1)
+    active_context = context()
     with pytest.raises(helper_error, match=r"Discovery document.*safety limit"):
-        _ = load_discovery(arguments, context())
+        _ = load_discovery(arguments, active_context)
 
 
 @pytest.mark.parametrize("content_length", [None, str(len(discovery_document()))])
@@ -426,16 +435,18 @@ def test_remote_discovery_rejects_dishonest_or_oversized_content_length(
     dishonest = FakeResponse(document, content_length="1")
     _ = install_opener(monkeypatch, [dishonest])
     monkeypatch.setattr(GTM, "MAX_DISCOVERY_DOCUMENT_BYTES", limit)
+    remote_arguments = argparse.Namespace(discovery_file=None, timeout=1.0)
+    active_context = context()
 
     with pytest.raises(helper_error, match=r"Discovery response.*safety limit"):
-        _ = load_discovery(argparse.Namespace(discovery_file=None, timeout=1.0), context())
+        _ = load_discovery(remote_arguments, active_context)
     assert dishonest.read_amounts == [limit + 1]
     assert dishonest.closed
 
     declared_over = FakeResponse(document[:limit], content_length=str(limit + 1))
     _ = install_opener(monkeypatch, [declared_over])
     with pytest.raises(helper_error, match=r"Discovery response.*safety limit"):
-        _ = load_discovery(argparse.Namespace(discovery_file=None, timeout=1.0), context())
+        _ = load_discovery(remote_arguments, active_context)
     assert declared_over.read_amounts == []
     assert declared_over.closed
 
@@ -470,9 +481,12 @@ def test_success_body_rejects_one_byte_over_with_dishonest_length(
     response = FakeResponse(payload, content_length="1")
     _ = install_opener(monkeypatch, [response])
     monkeypatch.setattr(GTM, "MAX_API_RESPONSE_BYTES", limit)
+    plan = request_plan()
+    active_credential = credential()
+    request_runtime = argparse.Namespace(retries=0, timeout=1.0)
 
     with pytest.raises(helper_error, match=r"API response.*safety limit"):
-        _ = send(request_plan(), f"{BASE_URL}/accounts", credential(), argparse.Namespace(retries=0, timeout=1.0))
+        _ = send(plan, f"{BASE_URL}/accounts", active_credential, request_runtime)
     assert response.read_amounts == [limit + 1]
     assert response.closed
 
@@ -492,9 +506,12 @@ def test_error_body_accepts_exact_boundary_and_always_closes(
     failure = http_failure(400, payload, headers=headers)
     _ = install_opener(monkeypatch, [failure])
     monkeypatch.setattr(GTM, "MAX_ERROR_RESPONSE_BYTES", len(payload))
+    plan = request_plan()
+    active_credential = credential()
+    request_runtime = argparse.Namespace(retries=0, timeout=1.0)
 
     with pytest.raises(helper_error, match="HTTP 400"):
-        _ = send(request_plan(), f"{BASE_URL}/accounts", credential(), argparse.Namespace(retries=0, timeout=1.0))
+        _ = send(plan, f"{BASE_URL}/accounts", active_credential, request_runtime)
     assert failure.fp.closed
 
 
@@ -513,9 +530,12 @@ def test_error_body_rejects_one_byte_over_with_dishonest_length(
     )
     _ = install_opener(monkeypatch, [failure])
     monkeypatch.setattr(GTM, "MAX_ERROR_RESPONSE_BYTES", limit)
+    plan = request_plan()
+    active_credential = credential()
+    request_runtime = argparse.Namespace(retries=0, timeout=1.0)
 
     with pytest.raises(helper_error, match=r"error response.*safety limit"):
-        _ = send(request_plan(), f"{BASE_URL}/accounts", credential(), argparse.Namespace(retries=0, timeout=1.0))
+        _ = send(plan, f"{BASE_URL}/accounts", active_credential, request_runtime)
     assert failure.fp.closed
 
 
@@ -527,9 +547,11 @@ def test_discovery_error_body_is_bounded_and_closed(monkeypatch: pytest.MonkeyPa
     failure = http_failure(503, payload, headers={"Content-Length": "1"})
     _ = install_opener(monkeypatch, [failure])
     monkeypatch.setattr(GTM, "MAX_ERROR_RESPONSE_BYTES", len(payload) - 1)
+    arguments = argparse.Namespace(discovery_file=None, timeout=1.0)
+    active_context = context()
 
     with pytest.raises(helper_error, match=r"error response.*safety limit"):
-        _ = load_discovery(argparse.Namespace(discovery_file=None, timeout=1.0), context())
+        _ = load_discovery(arguments, active_context)
     assert failure.fp.closed
 
 
@@ -557,13 +579,11 @@ def test_method_and_http_status_retry_matrix(
         ).payload == {"ok": True}
         assert len(opener.requests) == EXPECTED_RETRY_ATTEMPTS
     else:
+        plan = request_plan(method)
+        active_credential = credential()
+        request_runtime = argparse.Namespace(retries=1, timeout=1.0)
         with pytest.raises(helper_error) as caught:
-            _ = send(
-                request_plan(method),
-                f"{BASE_URL}/accounts",
-                credential(),
-                argparse.Namespace(retries=1, timeout=1.0),
-            )
+            _ = send(plan, f"{BASE_URL}/accounts", active_credential, request_runtime)
         assert len(opener.requests) == 1
         message = str(caught.value)
         if method != "GET" and status in RETRYABLE_STATUSES:
@@ -599,13 +619,11 @@ def test_method_and_transport_failure_retry_matrix(
         assert len(opener.requests) == EXPECTED_RETRY_ATTEMPTS
         return
 
+    plan = request_plan(method)
+    active_credential = credential()
+    request_runtime = argparse.Namespace(retries=5, timeout=1.0)
     with pytest.raises(helper_error) as caught:
-        _ = send(
-            request_plan(method),
-            f"{BASE_URL}/accounts",
-            credential(),
-            argparse.Namespace(retries=5, timeout=1.0),
-        )
+        _ = send(plan, f"{BASE_URL}/accounts", active_credential, request_runtime)
     assert len(opener.requests) == 1
     message = str(caught.value)
     assert "attempted exactly once" in message
@@ -628,8 +646,10 @@ def test_unsupported_discovery_and_raw_methods_are_rejected(method: str) -> None
                 "httpMethod": method,
             }
         )
+    arguments = raw_arguments("/accounts", method=method)
+    active_context = context()
     with pytest.raises(helper_error, match="Unsupported HTTP method"):
-        _ = build_plan(raw_arguments("/accounts", method=method), context())
+        _ = build_plan(arguments, active_context)
 
 
 @pytest.mark.parametrize(
@@ -707,8 +727,11 @@ def test_cumulative_pagination_rejects_before_retaining_overflow_page(
     monkeypatch.setattr(GTM, "send_request", fake_send)
     monkeypatch.setattr(GTM, "result_payload", track_result)
     monkeypatch.setattr(GTM, "MAX_PAGINATED_RESPONSE_BYTES", CUMULATIVE_TEST_LIMIT)
+    arguments = argparse.Namespace(max_pages=2)
+    plan = request_plan()
+    active_credential = credential()
 
     with pytest.raises(helper_error, match="cumulative safety limit"):
-        write_pages(argparse.Namespace(max_pages=2), request_plan(), credential())
+        write_pages(arguments, plan, active_credential)
     assert retained == [5]
     assert capsys.readouterr().out == ""

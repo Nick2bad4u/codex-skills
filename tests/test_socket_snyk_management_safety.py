@@ -800,10 +800,11 @@ def test_repeated_decoding_confines_relative_and_absolute_endpoint_paths(
 ) -> None:
     """Encoded structural delimiters, traversal, controls, and malformed escapes fail closed."""
     validate = cast("Callable[[str, str], str]", member(module, "validated_endpoint_url"))
-    endpoint = f"{provider_base_url(module)}{unsafe_path}" if absolute else unsafe_path
+    base_url = provider_base_url(module)
+    endpoint = f"{base_url}{unsafe_path}" if absolute else unsafe_path
 
     with pytest.raises(provider_error(module), match=r"(?i)(path|encoded|escape|control|travers)"):
-        _ = validate(provider_base_url(module), endpoint)
+        _ = validate(base_url, endpoint)
 
 
 @pytest.mark.parametrize("module", PROVIDERS, ids=provider_name)
@@ -830,18 +831,21 @@ def test_encoded_spec_traversal_is_rejected(module: ModuleType) -> None:
         spec_url = f"{SOCKET_BASE_URL}/openapi/%252E%252e/private"
     else:
         spec_url = f"{SNYK_BASE_URL}/openapi/{SNYK_API_VERSION}/%252E%252e/private"
+    context = provider_context(module)
 
     with pytest.raises(provider_error(module), match=r"(?i)(path|encoded|escape|travers)"):
-        _ = validate(spec_url, provider_context(module))
+        _ = validate(spec_url, context)
 
 
 def test_snyk_pagination_link_repeated_decoding_cannot_escape_rest() -> None:
     """A same-origin next link is still rejected when its path decodes into traversal."""
     pagination_plan = cast("Callable[[object, object, str], object]", member(SNYK, "pagination_plan"))
     next_link = f"/rest/items/%252e%252e/admin?version={SNYK_API_VERSION}"
+    context = provider_context(SNYK)
+    plan = provider_plan(SNYK, "GET")
 
     with pytest.raises(provider_error(SNYK), match=r"(?i)(path|encoded|escape|travers)"):
-        _ = pagination_plan(provider_context(SNYK), provider_plan(SNYK, "GET"), next_link)
+        _ = pagination_plan(context, plan, next_link)
 
 
 @pytest.mark.parametrize("module", PROVIDERS, ids=provider_name)
@@ -928,9 +932,10 @@ def test_get_does_not_inherit_every_ambiguous_write_status(
     opener = install_opener(monkeypatch, [failure, FakeResponse(b'{"unexpected":true}')])
     sleeps: list[float] = []
     monkeypatch.setattr(time, "sleep", sleeps.append)
+    plan = provider_plan(module, "GET")
 
     with pytest.raises(provider_error(module), match="599"):
-        _ = send(module, provider_plan(module, "GET"), retries=5)
+        _ = send(module, plan, retries=5)
 
     assert len(opener.requests) == 1
     assert sleeps == []
@@ -976,9 +981,10 @@ def test_writes_are_single_attempt_with_indeterminate_http_outcome(
     )
     sleeps: list[float] = []
     monkeypatch.setattr(time, "sleep", sleeps.append)
+    plan = provider_plan(module, method)
 
     with pytest.raises(provider_error(module), match=r"(?i)indeterminate") as captured:
-        _ = send(module, provider_plan(module, method), retries=5)
+        _ = send(module, plan, retries=5)
 
     message = str(captured.value)
     assert str(status) in message
@@ -1004,9 +1010,10 @@ def test_writes_are_single_attempt_with_indeterminate_transport_outcome(
     )
     sleeps: list[float] = []
     monkeypatch.setattr(time, "sleep", sleeps.append)
+    plan = provider_plan(module, method)
 
     with pytest.raises(helper_error, match=r"(?i)indeterminate"):
-        _ = send(module, provider_plan(module, method), retries=5)
+        _ = send(module, plan, retries=5)
 
     assert len(opener.requests) == 1
     assert sleeps == []
@@ -1027,9 +1034,10 @@ def test_retryable_write_with_malformed_json_is_still_indeterminate(
         monkeypatch,
         [http_failure(f"{base_url}/items", 503, b"{"), FakeResponse(b'{"unexpected":true}')],
     )
+    plan = provider_plan(module, method)
 
     with pytest.raises(helper_error, match=r"(?i)indeterminate"):
-        _ = send(module, provider_plan(module, method), retries=5)
+        _ = send(module, plan, retries=5)
 
     assert len(opener.requests) == 1
 
@@ -1055,9 +1063,10 @@ def test_snyk_rejects_malformed_nonempty_json(monkeypatch: pytest.MonkeyPatch) -
         monkeypatch,
         [FakeResponse(b"{", headers={"Content-Type": "application/vnd.api+json"})],
     )
+    plan = provider_plan(SNYK, "GET")
 
     with pytest.raises(helper_error, match="malformed JSON"):
-        _ = send(SNYK, provider_plan(SNYK, "GET"), retries=0)
+        _ = send(SNYK, plan, retries=0)
 
     assert len(opener.requests) == 1
 
@@ -1085,9 +1094,10 @@ def test_local_openapi_parsing_rejects_nonfinite_and_overflow_numbers(
     _ = spec_file.write_text(f'{{"paths":{{}},"value":{nonfinite}}}', encoding="utf-8")
     load_openapi = cast("Callable[..., tuple[dict[str, JsonValue], str]]", member(module, "load_openapi"))
     arguments = argparse.Namespace(spec_file=spec_file, spec_url=None, timeout=1.0)
+    context = provider_context(module)
 
     with pytest.raises(provider_error(module), match=r"(?i)(json|finite|parse)"):
-        _ = load_openapi(arguments, provider_context(module))
+        _ = load_openapi(arguments, context)
 
 
 @pytest.mark.parametrize("nonfinite", NONFINITE_JSON_VALUES)
@@ -1103,9 +1113,10 @@ def test_success_json_responses_reject_nonfinite_and_overflow_numbers(
         headers={"Content-Type": provider_content_type(module)},
     )
     _ = install_opener(monkeypatch, [response])
+    plan = provider_plan(module, "GET")
 
     with pytest.raises(provider_error(module), match=r"(?i)(json|finite)"):
-        _ = send(module, provider_plan(module, "GET"), retries=0)
+        _ = send(module, plan, retries=0)
 
     assert response.closed
 
@@ -1154,9 +1165,10 @@ def test_snyk_200_requires_nonempty_strict_json(
     """A successful ordinary REST response cannot be empty or fall back to plain text."""
     response = FakeResponse(payload, headers={"Content-Type": content_type})
     _ = install_opener(monkeypatch, [response])
+    plan = provider_plan(SNYK, "GET")
 
     with pytest.raises(provider_error(SNYK), match=r"(?i)(HTTP 200|JSON|empty)"):
-        _ = send(SNYK, provider_plan(SNYK, "GET"), retries=0)
+        _ = send(SNYK, plan, retries=0)
 
     assert response.closed
 
@@ -1193,9 +1205,10 @@ def test_snyk_204_nonempty_malformed_json_is_indeterminate(monkeypatch: pytest.M
     """Malformed bytes after a successful DELETE retain status and write-ambiguity guidance."""
     response = FakeResponse(b"plain", status=HTTP_NO_CONTENT, headers={"Content-Type": "text/plain"})
     opener = install_opener(monkeypatch, [response, FakeResponse(b'{"unexpected":true}')])
+    plan = provider_plan(SNYK, "DELETE")
 
     with pytest.raises(provider_error(SNYK), match=r"(?i)indeterminate") as captured:
-        _ = send(SNYK, provider_plan(SNYK, "DELETE"), retries=5)
+        _ = send(SNYK, plan, retries=5)
 
     message = str(captured.value)
     assert "204" in message
@@ -1226,9 +1239,10 @@ def test_post_success_write_response_failures_are_indeterminate_with_known_statu
     else:
         response = FakeResponse(b"", status=status, headers=headers)
     opener = install_opener(monkeypatch, [response, FakeResponse(b'{"unexpected":true}')])
+    plan = provider_plan(module, method)
 
     with pytest.raises(provider_error(module), match=r"(?i)indeterminate") as captured:
-        _ = send(module, provider_plan(module, method), retries=5)
+        _ = send(module, plan, retries=5)
 
     message = str(captured.value)
     assert str(status) in message
@@ -1278,9 +1292,10 @@ def test_success_body_rejects_actual_one_over_regardless_of_content_length(
         headers["Content-Length"] = content_length
     response = FakeResponse(b"123456789", headers=headers)
     _ = install_opener(monkeypatch, [response])
+    plan = provider_plan(module, "GET")
 
     with pytest.raises(provider_error(module), match=rf"{limit}-byte safety limit"):
-        _ = send(module, provider_plan(module, "GET"), retries=0)
+        _ = send(module, plan, retries=0)
 
     assert response.read_sizes == [limit + 1]
     assert response.closed
@@ -1296,9 +1311,10 @@ def test_success_body_rejects_oversized_numeric_content_length_before_read(
     monkeypatch.setattr(module, "MAX_API_RESPONSE_BYTES", limit)
     response = FakeResponse(b"{}", headers={"Content-Type": "application/json", "Content-Length": "9"})
     _ = install_opener(monkeypatch, [response])
+    plan = provider_plan(module, "GET")
 
     with pytest.raises(provider_error(module), match=rf"{limit}-byte safety limit"):
-        _ = send(module, provider_plan(module, "GET"), retries=0)
+        _ = send(module, plan, retries=0)
 
     assert response.read_sizes == []
     assert response.closed
@@ -1341,9 +1357,10 @@ def test_error_body_accepts_exact_boundary_read_and_closes(
         content_type="text/plain",
     )
     _ = install_opener(monkeypatch, [failure])
+    plan = provider_plan(module, "GET")
 
     with pytest.raises(provider_error(module), match="HTTP 400"):
-        _ = send(module, provider_plan(module, "GET"), retries=0)
+        _ = send(module, plan, retries=0)
 
     assert stream.read_sizes == [limit + 1]
     assert stream.closed
@@ -1371,9 +1388,10 @@ def test_error_body_rejects_actual_one_over_regardless_of_content_length(
         content_type="text/plain",
     )
     _ = install_opener(monkeypatch, [failure])
+    plan = provider_plan(module, "GET")
 
     with pytest.raises(provider_error(module), match=rf"{limit}-byte safety limit"):
-        _ = send(module, provider_plan(module, "GET"), retries=0)
+        _ = send(module, plan, retries=0)
 
     assert stream.read_sizes == [limit + 1]
     assert stream.closed
@@ -1394,9 +1412,10 @@ def test_error_body_rejects_oversized_numeric_content_length_before_read(
         content_length="9",
     )
     _ = install_opener(monkeypatch, [failure])
+    plan = provider_plan(module, "GET")
 
     with pytest.raises(provider_error(module), match=rf"{limit}-byte safety limit"):
-        _ = send(module, provider_plan(module, "GET"), retries=0)
+        _ = send(module, plan, retries=0)
 
     assert stream.read_sizes == []
     assert stream.closed
@@ -1419,9 +1438,10 @@ def test_retryable_write_error_body_overflow_remains_indeterminate(
         content_type="text/plain",
     )
     opener = install_opener(monkeypatch, [failure, FakeResponse(b'{"unexpected":true}')])
+    plan = provider_plan(module, method)
 
     with pytest.raises(provider_error(module), match=r"(?i)indeterminate") as captured:
-        _ = send(module, provider_plan(module, method), retries=5)
+        _ = send(module, plan, retries=5)
 
     assert "123456789" not in str(captured.value)
     assert len(opener.requests) == 1
@@ -1443,15 +1463,16 @@ def test_local_openapi_accepts_exact_boundary_and_rejects_one_over(
     spec_file = tmp_path / f"{provider_name(module)}-openapi.json"
     _ = spec_file.write_bytes(body)
     arguments = argparse.Namespace(spec_file=spec_file, spec_url=None, timeout=1.0)
+    context = provider_context(module)
 
-    payload, source = load_openapi(arguments, provider_context(module))
+    payload, source = load_openapi(arguments, context)
 
     assert payload == {"paths": {}}
     assert source == str(spec_file)
 
     _ = spec_file.write_bytes(body + b" ")
     with pytest.raises(provider_error(module), match=rf"{limit}-byte safety limit"):
-        _ = load_openapi(arguments, provider_context(module))
+        _ = load_openapi(arguments, context)
 
 
 @pytest.mark.parametrize("module", PROVIDERS, ids=provider_name)
@@ -1497,9 +1518,10 @@ def test_remote_openapi_rejects_actual_one_over_regardless_of_content_length(
     _ = install_opener(monkeypatch, [response])
     load_openapi = cast("Callable[..., tuple[dict[str, JsonValue], str]]", member(module, "load_openapi"))
     arguments = argparse.Namespace(spec_file=None, spec_url=None, timeout=1.0)
+    context = provider_context(module)
 
     with pytest.raises(provider_error(module), match=rf"{limit}-byte safety limit"):
-        _ = load_openapi(arguments, provider_context(module))
+        _ = load_openapi(arguments, context)
 
     assert response.read_sizes == [limit + 1]
     assert response.closed
@@ -1518,9 +1540,10 @@ def test_remote_openapi_rejects_oversized_numeric_content_length_before_read(
     _ = install_opener(monkeypatch, [response])
     load_openapi = cast("Callable[..., tuple[dict[str, JsonValue], str]]", member(module, "load_openapi"))
     arguments = argparse.Namespace(spec_file=None, spec_url=None, timeout=1.0)
+    context = provider_context(module)
 
     with pytest.raises(provider_error(module), match=rf"{limit}-byte safety limit"):
-        _ = load_openapi(arguments, provider_context(module))
+        _ = load_openapi(arguments, context)
 
     assert response.read_sizes == []
     assert response.closed
@@ -1579,9 +1602,10 @@ def test_snyk_version_catalog_rejects_actual_one_over_regardless_of_content_leng
     response = FakeResponse(body + b" ", headers=headers)
     _ = install_opener(monkeypatch, [response])
     handle_versions = cast("Callable[[argparse.Namespace], int]", member(SNYK, "handle_versions"))
+    arguments = snyk_versions_arguments()
 
     with pytest.raises(provider_error(SNYK), match=rf"{limit}-byte safety limit"):
-        _ = handle_versions(snyk_versions_arguments())
+        _ = handle_versions(arguments)
 
     assert response.read_sizes == [limit + 1]
     assert response.closed
@@ -1599,9 +1623,10 @@ def test_snyk_version_catalog_rejects_oversized_numeric_content_length_before_re
     response = FakeResponse(b"[]", headers={"Content-Type": "application/json", "Content-Length": str(limit + 1)})
     _ = install_opener(monkeypatch, [response])
     handle_versions = cast("Callable[[argparse.Namespace], int]", member(SNYK, "handle_versions"))
+    arguments = snyk_versions_arguments()
 
     with pytest.raises(provider_error(SNYK), match=rf"{limit}-byte safety limit"):
-        _ = handle_versions(snyk_versions_arguments())
+        _ = handle_versions(arguments)
 
     assert response.read_sizes == []
     assert response.closed
@@ -1618,9 +1643,10 @@ def test_snyk_version_catalog_rejects_nonfinite_and_overflow_numbers(
     response = FakeResponse(f"[{nonfinite}]".encode(), headers={"Content-Type": "text/plain"})
     _ = install_opener(monkeypatch, [response])
     handle_versions = cast("Callable[[argparse.Namespace], int]", member(SNYK, "handle_versions"))
+    arguments = snyk_versions_arguments()
 
     with pytest.raises(provider_error(SNYK), match=r"(?i)(json|finite)"):
-        _ = handle_versions(snyk_versions_arguments())
+        _ = handle_versions(arguments)
 
     assert response.closed
 
@@ -1678,13 +1704,12 @@ def test_snyk_pagination_rejects_present_nonmapping_links(
 
     monkeypatch.setattr(SNYK, "send_request", fake_send)
     paginate = cast("Callable[..., object]", member(SNYK, "paginated_request"))
+    context = provider_context(SNYK)
+    plan = provider_plan(SNYK, "GET")
+    arguments = argparse.Namespace(max_pages=3, retries=0, timeout=1.0)
 
     with pytest.raises(provider_error(SNYK), match=r"(?i)links.*(object|mapping|malformed)"):
-        _ = paginate(
-            provider_context(SNYK),
-            provider_plan(SNYK, "GET"),
-            argparse.Namespace(max_pages=3, retries=0, timeout=1.0),
-        )
+        _ = paginate(context, plan, arguments)
 
     assert calls == 1
 
@@ -1708,13 +1733,12 @@ def test_snyk_pagination_rejects_malformed_nonnull_next(
 
     monkeypatch.setattr(SNYK, "send_request", fake_send)
     paginate = cast("Callable[..., object]", member(SNYK, "paginated_request"))
+    context = provider_context(SNYK)
+    plan = provider_plan(SNYK, "GET")
+    arguments = argparse.Namespace(max_pages=3, retries=0, timeout=1.0)
 
     with pytest.raises(provider_error(SNYK), match=r"(?i)links\.next.*non-empty string or null"):
-        _ = paginate(
-            provider_context(SNYK),
-            provider_plan(SNYK, "GET"),
-            argparse.Namespace(max_pages=3, retries=0, timeout=1.0),
-        )
+        _ = paginate(context, plan, arguments)
 
     assert calls == 1
 
@@ -1763,12 +1787,14 @@ def test_pagination_enforces_cumulative_bytes_before_retaining_overflow_items(
     monkeypatch.setattr(module, "send_request", fake_send)
     paginate = cast("Callable[..., object]", member(module, "paginated_request"))
     arguments = argparse.Namespace(max_pages=3, retries=0, timeout=1.0)
+    context = provider_context(module)
+    plan = provider_plan(module, "GET")
 
     if overflow:
         with pytest.raises(provider_error(module), match=rf"{cumulative_limit}-byte cumulative safety limit"):
-            _ = paginate(provider_context(module), provider_plan(module, "GET"), arguments)
+            _ = paginate(context, plan, arguments)
     else:
-        result = cast("ApiResultView", paginate(provider_context(module), provider_plan(module, "GET"), arguments))
+        result = cast("ApiResultView", paginate(context, plan, arguments))
         assert result.response_bytes == cumulative_limit
         expected_key = "items" if module is SOCKET else "data"
         assert cast("dict[str, JsonValue]", result.payload)[expected_key] == [1, 2]
@@ -1795,13 +1821,12 @@ def test_socket_repeated_cursor_fails_before_third_request_with_partial_context(
 
     monkeypatch.setattr(SOCKET, "send_request", fake_send)
     paginate = cast("Callable[..., object]", member(SOCKET, "paginated_request"))
+    context = provider_context(SOCKET)
+    plan = provider_plan(SOCKET, "GET")
+    arguments = argparse.Namespace(max_pages=3, retries=0, timeout=1.0)
 
     with pytest.raises(provider_error(SOCKET), match=r"(?i)incomplete after 2 page\(s\).*repeated.*cursor"):
-        _ = paginate(
-            provider_context(SOCKET),
-            provider_plan(SOCKET, "GET"),
-            argparse.Namespace(max_pages=3, retries=0, timeout=1.0),
-        )
+        _ = paginate(context, plan, arguments)
 
     assert calls == RETRIED_REQUEST_COUNT
 
@@ -1827,13 +1852,12 @@ def test_snyk_repeated_canonical_next_url_fails_before_third_request(
 
     monkeypatch.setattr(SNYK, "send_request", fake_send)
     paginate = cast("Callable[..., object]", member(SNYK, "paginated_request"))
+    context = provider_context(SNYK)
+    plan = provider_plan(SNYK, "GET")
+    arguments = argparse.Namespace(max_pages=3, retries=0, timeout=1.0)
 
     with pytest.raises(provider_error(SNYK), match=r"(?i)incomplete after 2 page\(s\).*repeated.*next"):
-        _ = paginate(
-            provider_context(SNYK),
-            provider_plan(SNYK, "GET"),
-            argparse.Namespace(max_pages=3, retries=0, timeout=1.0),
-        )
+        _ = paginate(context, plan, arguments)
 
     assert calls == RETRIED_REQUEST_COUNT
 
@@ -1893,9 +1917,11 @@ def test_transport_reasons_are_bounded_redacted_and_keep_write_indeterminacy(
         monkeypatch,
         [transport_failure(failure_kind, reason), FakeResponse(b'{"unexpected":true}')],
     )
+    plan = provider_plan(module, method)
+    retries = 5 if method != "GET" else 0
 
     with pytest.raises(provider_error(module)) as captured:
-        _ = send(module, provider_plan(module, method), retries=5 if method != "GET" else 0)
+        _ = send(module, plan, retries=retries)
 
     message = str(captured.value)
     scheme = "Bearer" if module is SOCKET else "token"
@@ -1919,9 +1945,10 @@ def test_openapi_transport_reasons_are_bounded_and_redacted(
     _ = install_opener(monkeypatch, [error.URLError(credential_bearing_reason(module))])
     load_openapi = cast("Callable[..., tuple[dict[str, JsonValue], str]]", member(module, "load_openapi"))
     arguments = argparse.Namespace(spec_file=None, spec_url=None, timeout=1.0)
+    context = provider_context(module)
 
     with pytest.raises(provider_error(module)) as captured:
-        _ = load_openapi(arguments, provider_context(module))
+        _ = load_openapi(arguments, context)
 
     message = str(captured.value)
     assert TEST_TOKEN not in message
@@ -1950,12 +1977,11 @@ def test_openapi_http_error_read_reasons_are_closed_bounded_and_redacted(
     )
     _ = install_opener(monkeypatch, [failure])
     load_openapi = cast("Callable[..., tuple[dict[str, JsonValue], str]]", member(module, "load_openapi"))
+    arguments = argparse.Namespace(spec_file=None, spec_url=None, timeout=1.0)
+    context = provider_context(module)
 
     with pytest.raises(provider_error(module)) as captured:
-        _ = load_openapi(
-            argparse.Namespace(spec_file=None, spec_url=None, timeout=1.0),
-            provider_context(module),
-        )
+        _ = load_openapi(arguments, context)
 
     message = str(captured.value)
     assert TEST_TOKEN not in message
@@ -1972,9 +1998,10 @@ def test_snyk_version_transport_reason_is_bounded_and_redacted(monkeypatch: pyte
     monkeypatch.setenv("SNYK_TOKEN", TEST_TOKEN)
     _ = install_opener(monkeypatch, [error.URLError(credential_bearing_reason(SNYK))])
     handle_versions = cast("Callable[[argparse.Namespace], int]", member(SNYK, "handle_versions"))
+    arguments = snyk_versions_arguments()
 
     with pytest.raises(provider_error(SNYK)) as captured:
-        _ = handle_versions(snyk_versions_arguments())
+        _ = handle_versions(arguments)
 
     message = str(captured.value)
     assert TEST_TOKEN not in message
@@ -2043,9 +2070,10 @@ def validation_arguments(*, max_pages: int = 1, retries: int = 0, timeout: float
 def test_nonpositive_and_nonfinite_timeouts_are_rejected_directly(module: ModuleType, timeout: float) -> None:
     """NaN and infinities cannot bypass direct timeout validation."""
     validate = cast("Callable[[argparse.Namespace], None]", member(module, "validate_arguments"))
+    arguments = validation_arguments(timeout=timeout)
 
     with pytest.raises(provider_error(module), match=r"(?i)finite.*greater than zero"):
-        validate(validation_arguments(timeout=timeout))
+        validate(arguments)
 
 
 @pytest.mark.parametrize(
@@ -2062,9 +2090,11 @@ def test_retry_and_page_caps_reject_out_of_range_values_directly(
     validate = cast("Callable[[argparse.Namespace], None]", member(module, "validate_arguments"))
     max_pages = value if name == "max_pages" else 1
     retries = value if name == "retries" else 0
+    arguments = validation_arguments(max_pages=max_pages, retries=retries)
+    match = rf"--{name.replace('_', '-')}.*between"
 
-    with pytest.raises(provider_error(module), match=rf"--{name.replace('_', '-')}.*between"):
-        validate(validation_arguments(max_pages=max_pages, retries=retries))
+    with pytest.raises(provider_error(module), match=match):
+        validate(arguments)
 
 
 @pytest.mark.parametrize("module", PROVIDERS, ids=provider_name)

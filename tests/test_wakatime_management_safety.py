@@ -492,9 +492,10 @@ def test_forged_foreign_plan_is_rejected_before_authentication_is_attached(
     """Transport validation blocks a forged plan before building a request."""
     helper_error = cast("type[Exception]", member("WakaTimeCliError"))
     opener = install_opener(monkeypatch, [FakeResponse(b"unexpected")])
+    request_plan = plan(url="https://attacker.invalid/api/v1/users/current")
 
     with pytest.raises(helper_error, match="origin must match"):
-        _ = send(plan(url="https://attacker.invalid/api/v1/users/current"), retries=0)
+        _ = send(request_plan, retries=0)
 
     assert opener.requests == []
 
@@ -632,9 +633,10 @@ def test_transport_rejects_timeout_over_cap_before_opening_a_request(
     """Direct callers cannot bypass the timeout cap and reach Windows sockets."""
     helper_error = cast("type[Exception]", member("WakaTimeCliError"))
     opener = install_opener(monkeypatch, [FakeResponse(b"unexpected")])
+    request_plan = plan()
 
     with pytest.raises(helper_error, match="at most 300 seconds"):
-        _ = send(plan(), retries=0, timeout=MAX_TIMEOUT_SECONDS + 0.001)
+        _ = send(request_plan, retries=0, timeout=MAX_TIMEOUT_SECONDS + 0.001)
 
     assert opener.requests == []
     assert opener.timeouts == []
@@ -730,9 +732,10 @@ def test_writes_are_single_attempt_with_indeterminate_http_outcome(
     opener = install_opener(monkeypatch, [failure, FakeResponse(b"unexpected")])
     sleeps: list[float] = []
     monkeypatch.setattr(time, "sleep", sleeps.append)
+    request_plan = plan(method)
 
     with pytest.raises(helper_error, match=r"(?i)indeterminate"):
-        _ = send(plan(method), retries=5)
+        _ = send(request_plan, retries=5)
 
     assert len(opener.requests) == 1
     assert sleeps == []
@@ -761,9 +764,10 @@ def test_transient_write_guidance_survives_every_error_body_failure_shape(
     opener = install_opener(monkeypatch, [failure, FakeResponse(b"unexpected")])
     sleeps: list[float] = []
     monkeypatch.setattr(time, "sleep", sleeps.append)
+    request_plan = plan(method)
 
     with pytest.raises(helper_error) as captured:
-        _ = send(plan(method), retries=10)
+        _ = send(request_plan, retries=10)
 
     message = str(captured.value)
     assert f"HTTP {status}" in message
@@ -789,9 +793,10 @@ def test_writes_are_single_attempt_with_indeterminate_transport_outcome(
     )
     sleeps: list[float] = []
     monkeypatch.setattr(time, "sleep", sleeps.append)
+    request_plan = plan(method)
 
     with pytest.raises(helper_error, match=r"(?i)indeterminate"):
-        _ = send(plan(method), retries=5)
+        _ = send(request_plan, retries=5)
 
     assert len(opener.requests) == 1
     assert sleeps == []
@@ -1095,9 +1100,11 @@ def test_non_json_success_marker_is_not_emitted_before_synthetic_payload_validat
         json=False,
         send=True,
     )
+    execution_context = context()
+    request_plan = plan()
 
     with pytest.raises(helper_error, match="strict JSON with finite numbers"):
-        _ = execute(arguments, context(), plan())
+        _ = execute(arguments, execution_context, request_plan)
 
     assert capsys.readouterr().out == ""
 
@@ -1175,9 +1182,10 @@ def test_error_json_redacts_nested_sensitive_maps_and_lists_but_keeps_ordinary_f
     }
     failure, _stream = http_failure(400, body=json.dumps(payload).encode())
     _ = install_opener(monkeypatch, [failure])
+    request_plan = plan()
 
     with pytest.raises(helper_error) as captured:
-        _ = send(plan(), retries=0)
+        _ = send(request_plan, retries=0)
 
     message = str(captured.value)
     assert "error-client-secret" not in message
@@ -1276,9 +1284,10 @@ def test_success_json_rejects_nonfinite_numbers_and_closes_response(
     helper_error = cast("type[Exception]", member("WakaTimeCliError"))
     response = FakeResponse(response_json.encode(), content_type="application/json")
     opener = install_opener(monkeypatch, [response])
+    request_plan = plan()
 
     with pytest.raises(helper_error, match="malformed JSON or a non-finite JSON number"):
-        _ = send(plan(), retries=0)
+        _ = send(request_plan, retries=0)
 
     assert len(opener.requests) == 1
     assert response.closed
@@ -1300,9 +1309,10 @@ def test_transient_write_error_json_rejects_nonfinite_numbers_without_losing_gui
     opener = install_opener(monkeypatch, [failure, FakeResponse(b"unexpected")])
     sleeps: list[float] = []
     monkeypatch.setattr(time, "sleep", sleeps.append)
+    request_plan = plan("POST")
 
     with pytest.raises(helper_error) as captured:
-        _ = send(plan("POST"), retries=10)
+        _ = send(request_plan, retries=10)
 
     message = str(captured.value)
     assert "malformed, undecodable, or non-finite error response body omitted" in message
@@ -1337,9 +1347,10 @@ def test_success_response_rejects_overflow_with_missing_or_dishonest_length(
     monkeypatch.setattr(WAKATIME, "MAX_API_RESPONSE_BYTES", 8)
     response = FakeResponse(b"123456789", content_length=content_length)
     _ = install_opener(monkeypatch, [response])
+    request_plan = plan()
 
     with pytest.raises(helper_error, match="8-byte safety limit"):
-        _ = send(plan(), retries=0)
+        _ = send(request_plan, retries=0)
 
     assert response.read_sizes == [9]
 
@@ -1352,9 +1363,10 @@ def test_success_response_rejects_oversized_declared_length_before_read(
     monkeypatch.setattr(WAKATIME, "MAX_API_RESPONSE_BYTES", 8)
     response = FakeResponse(b"{}", content_length="9")
     _ = install_opener(monkeypatch, [response])
+    request_plan = plan()
 
     with pytest.raises(helper_error, match="8-byte safety limit"):
-        _ = send(plan(), retries=0)
+        _ = send(request_plan, retries=0)
 
     assert response.read_sizes == []
 
@@ -1365,9 +1377,10 @@ def test_http_error_reads_exact_boundary_with_limit_plus_one(monkeypatch: pytest
     monkeypatch.setattr(WAKATIME, "MAX_ERROR_RESPONSE_BYTES", 8)
     failure, stream = http_failure(400, body=b"12345678")
     _ = install_opener(monkeypatch, [failure])
+    request_plan = plan()
 
     with pytest.raises(helper_error, match="HTTP 400"):
-        _ = send(plan(), retries=0)
+        _ = send(request_plan, retries=0)
 
     assert stream.read_sizes == [9]
 
@@ -1382,8 +1395,9 @@ def test_http_error_rejects_overflow_with_missing_or_dishonest_length(
     monkeypatch.setattr(WAKATIME, "MAX_ERROR_RESPONSE_BYTES", 8)
     failure, stream = http_failure(400, body=b"123456789", content_length=content_length)
     _ = install_opener(monkeypatch, [failure])
+    request_plan = plan()
 
     with pytest.raises(helper_error, match="8-byte safety limit"):
-        _ = send(plan(), retries=0)
+        _ = send(request_plan, retries=0)
 
     assert stream.read_sizes == [9]

@@ -815,24 +815,28 @@ def test_preview_and_transport_recheck_both_context_credentials(monkeypatch: pyt
         write_preview(context, plan, unsafe_url, secrets)
 
     opener = install_opener(monkeypatch, [FakeResponse(b"{}")])
+    read_credential = credential(RESERVED_READ_CREDENTIAL)
+    retry_arguments = request_arguments(retries=10)
     with pytest.raises(helper_error, match="Authorization header"):
         _ = send(
             plan,
             unsafe_url,
-            credential(RESERVED_READ_CREDENTIAL),
-            request_arguments(retries=10),
+            read_credential,
+            retry_arguments,
             secrets=secrets,
         )
     assert opener.requests == []
 
     encoded_read = parse.quote(parse.quote(RESERVED_READ_CREDENTIAL, safe=""), safe="")
     write_plan = request_plan("POST", body={"postValueData": encoded_read})
+    main_credential = credential(RESERVED_MAIN_CREDENTIAL)
+    write_arguments = request_arguments(retries=10)
     with pytest.raises(helper_error, match="Authorization header"):
         _ = send(
             write_plan,
             f"{API_BASE_URL}/monitors",
-            credential(RESERVED_MAIN_CREDENTIAL),
-            request_arguments(retries=10),
+            main_credential,
+            write_arguments,
             secrets=secrets,
         )
     assert opener.requests == []
@@ -928,8 +932,9 @@ def test_local_and_remote_openapi_reads_are_actual_byte_bounded_and_closed(
     assert local_exact.read_sizes == [limit + 1]
 
     local_over = RecordingStream(document + b" ")
+    local_over_file = cast("Path", FakeSpecFile(local_over))
     with pytest.raises(helper_error, match=f"{limit}-byte safety limit"):
-        _ = load_local(cast("Path", FakeSpecFile(local_over)))
+        _ = load_local(local_over_file)
     assert local_over.closed
     assert local_over.read_sizes == [limit + 1]
 
@@ -942,8 +947,10 @@ def test_local_and_remote_openapi_reads_are_actual_byte_bounded_and_closed(
 
     remote_over = FakeResponse(document + b" ", content_length="1", content_type="application/json")
     _ = install_opener(monkeypatch, [remote_over])
+    remote_arguments = argparse.Namespace(timeout=1.0, retries=0)
+    context = uptime_context()
     with pytest.raises(helper_error, match=f"{limit}-byte safety limit"):
-        _ = load_remote(argparse.Namespace(timeout=1.0, retries=0), uptime_context())
+        _ = load_remote(remote_arguments, context)
     assert remote_over.closed
     assert remote_over.read_sizes == [limit + 1]
 
@@ -956,8 +963,10 @@ def test_remote_openapi_minimal_namespace_consumes_and_closes_http_error(
     helper_error = cast("type[Exception]", member("UptimeRobotCliError"))
     failure, stream = http_failure(503, b"temporary")
     opener = install_opener(monkeypatch, [failure])
+    arguments = argparse.Namespace(spec_file=None, timeout=1.0)
+    context = uptime_context()
     with pytest.raises(helper_error, match="OpenAPI request failed with HTTP 503"):
-        _ = load(argparse.Namespace(spec_file=None, timeout=1.0), uptime_context())
+        _ = load(arguments, context)
     assert len(opener.requests) == 1
     assert stream.closed
     assert stream.read_sizes == [cast("int", member("MAX_ERROR_RESPONSE_BYTES")) + 1]
@@ -982,23 +991,42 @@ def test_success_and_error_api_reads_are_actual_byte_bounded_and_closed(
 
     over = FakeResponse(success_body + b" ", content_length="1")
     _ = install_opener(monkeypatch, [over])
+    over_plan = request_plan()
+    over_credential = credential()
+    over_arguments = request_arguments()
     with pytest.raises(helper_error, match=f"{success_limit}-byte safety limit"):
-        _ = send(request_plan(), f"{API_BASE_URL}/monitors", credential(), request_arguments())
+        _ = send(over_plan, f"{API_BASE_URL}/monitors", over_credential, over_arguments)
     assert over.closed
     assert over.read_sizes == [success_limit + 1]
 
     monkeypatch.setattr(UPTIMEROBOT, "MAX_ERROR_RESPONSE_BYTES", 4)
     exact_failure, exact_error_stream = http_failure(400, b"1234", content_length="malformed")
     _ = install_opener(monkeypatch, [exact_failure])
+    exact_failure_plan = request_plan()
+    exact_failure_credential = credential()
+    exact_failure_arguments = request_arguments()
     with pytest.raises(helper_error, match="HTTP 400"):
-        _ = send(request_plan(), f"{API_BASE_URL}/monitors", credential(), request_arguments())
+        _ = send(
+            exact_failure_plan,
+            f"{API_BASE_URL}/monitors",
+            exact_failure_credential,
+            exact_failure_arguments,
+        )
     assert exact_error_stream.closed
     assert exact_error_stream.read_sizes == [5]
 
     oversized_failure, oversized_error_stream = http_failure(400, b"12345", content_length="1")
     _ = install_opener(monkeypatch, [oversized_failure])
+    oversized_failure_plan = request_plan()
+    oversized_failure_credential = credential()
+    oversized_failure_arguments = request_arguments()
     with pytest.raises(helper_error, match="4-byte safety limit"):
-        _ = send(request_plan(), f"{API_BASE_URL}/monitors", credential(), request_arguments())
+        _ = send(
+            oversized_failure_plan,
+            f"{API_BASE_URL}/monitors",
+            oversized_failure_credential,
+            oversized_failure_arguments,
+        )
     assert oversized_error_stream.closed
     assert oversized_error_stream.read_sizes == [5]
 
@@ -1087,12 +1115,15 @@ def test_transient_write_statuses_are_one_shot_and_indeterminate(
         direct_response = FakeResponse(b"temporary", retry_after="0", status=status)
         outcome = direct_response
     opener = install_opener(monkeypatch, [outcome])
+    plan = request_plan(method, body={"ordinary": "visible"})
+    request_credential = credential()
+    arguments = request_arguments(retries=10)
     with pytest.raises(helper_error) as caught:
         _ = send(
-            request_plan(method, body={"ordinary": "visible"}),
+            plan,
             f"{API_BASE_URL}/monitors",
-            credential(),
-            request_arguments(retries=10),
+            request_credential,
+            arguments,
         )
     message = str(caught.value)
     assert f"HTTP {status}" in message
@@ -1125,12 +1156,15 @@ def test_write_client_errors_are_definitive_and_never_retried(
         direct_response = FakeResponse(b"client error", retry_after="0", status=status)
         outcome = direct_response
     opener = install_opener(monkeypatch, [outcome])
+    plan = request_plan(method, body={"ordinary": "visible"})
+    request_credential = credential()
+    arguments = request_arguments(retries=10)
     with pytest.raises(helper_error) as caught:
         _ = send(
-            request_plan(method, body={"ordinary": "visible"}),
+            plan,
             f"{API_BASE_URL}/monitors",
-            credential(),
-            request_arguments(retries=10),
+            request_credential,
+            arguments,
         )
     message = str(caught.value)
     assert f"HTTP {status}" in message
@@ -1157,12 +1191,15 @@ def test_write_transport_losses_are_one_shot_bounded_redacted_and_indeterminate(
     reason = f"transport {encoded_secret} {webhook} " + ("x" * 5000)
     outcome: BaseException = error.URLError(reason) if transport_kind == "url-error" else TimeoutError(reason)
     opener = install_opener(monkeypatch, [outcome])
+    plan = request_plan(method, body={"ordinary": "visible"})
+    main_credential = credential(RESERVED_MAIN_CREDENTIAL)
+    arguments = request_arguments(retries=10)
     with pytest.raises(helper_error) as caught:
         _ = send(
-            request_plan(method, body={"ordinary": "visible"}),
+            plan,
             f"{API_BASE_URL}/monitors",
-            credential(RESERVED_MAIN_CREDENTIAL),
-            request_arguments(retries=10),
+            main_credential,
+            arguments,
             secrets=(RESERVED_READ_CREDENTIAL, RESERVED_MAIN_CREDENTIAL),
         )
     message = str(caught.value)
@@ -1236,8 +1273,9 @@ def test_cumulative_pagination_limit_is_checked_before_retaining_page(
 
     monkeypatch.setattr(UPTIMEROBOT, "send_request", overflow_send)
     monkeypatch.setattr(UPTIMEROBOT, "result_payload", tracking_payload)
+    pagination_credential = credential()
     with pytest.raises(helper_error, match="10-byte cumulative safety limit"):
-        paginate(arguments, context, plan, credential(), f"{API_BASE_URL}/monitors")
+        paginate(arguments, context, plan, pagination_credential, f"{API_BASE_URL}/monitors")
     assert retained == ["one"]
     assert capsys.readouterr().out == ""
 
@@ -1291,12 +1329,14 @@ def test_pagination_rejects_malformed_cycles_and_encoded_credentials(
         return repeated_result
 
     monkeypatch.setattr(UPTIMEROBOT, "send_request", repeated_send)
+    pagination_arguments = argparse.Namespace(max_pages=3, retries=0, timeout=1.0)
+    read_credential = credential(RESERVED_READ_CREDENTIAL)
     with pytest.raises(helper_error, match="repeated nextLink"):
         paginate(
-            argparse.Namespace(max_pages=3, retries=0, timeout=1.0),
+            pagination_arguments,
             context,
             repeated_plan,
-            credential(RESERVED_READ_CREDENTIAL),
+            read_credential,
             f"{API_BASE_URL}/monitors?limit=1",
         )
 
@@ -1312,12 +1352,15 @@ def test_pagination_rejects_malformed_cycles_and_encoded_credentials(
         return secret_result
 
     monkeypatch.setattr(UPTIMEROBOT, "send_request", secret_send)
+    secret_arguments = argparse.Namespace(max_pages=3, retries=0, timeout=1.0)
+    secret_plan = request_plan()
+    secret_credential = credential(RESERVED_READ_CREDENTIAL)
     with pytest.raises(helper_error, match="Authorization header") as caught:
         paginate(
-            argparse.Namespace(max_pages=3, retries=0, timeout=1.0),
+            secret_arguments,
             context,
-            request_plan(),
-            credential(RESERVED_READ_CREDENTIAL),
+            secret_plan,
+            secret_credential,
             f"{API_BASE_URL}/monitors",
         )
     assert RESERVED_READ_CREDENTIAL not in str(caught.value)
@@ -1497,8 +1540,11 @@ def test_send_revalidates_url_confinement_before_auth_or_opener(
         return FakeOpener([])
 
     monkeypatch.setattr(request, "build_opener", build_opener)
+    plan = request_plan()
+    request_credential = credential()
+    arguments = request_arguments(retries=10)
     with pytest.raises(helper_error):
-        _ = send(request_plan(), unsafe_url, credential(), request_arguments(retries=10))
+        _ = send(plan, unsafe_url, request_credential, arguments)
     assert build_calls == []
 
 
@@ -1523,8 +1569,10 @@ def test_send_revalidates_an_unsafe_synthetic_plan_before_opener(monkeypatch: py
         query=(),
         url="https://api.uptimerobot.com/v3/monitors/%25252e%25252e/incidents",
     )
+    request_credential = credential()
+    arguments = request_arguments()
     with pytest.raises(helper_error):
-        _ = send(unsafe_plan, f"{API_BASE_URL}/monitors", credential(), request_arguments())
+        _ = send(unsafe_plan, f"{API_BASE_URL}/monitors", request_credential, arguments)
     assert build_calls == []
 
 
@@ -1541,14 +1589,16 @@ def test_request_body_file_is_binary_bounded_utf8_strict_and_closed(monkeypatch:
     assert exact.read_sizes == [len(document) + 1]
 
     over = RecordingStream(document + b" ")
+    over_arguments = argparse.Namespace(body_json=None, body_file=FakeSpecFile(over))
     with pytest.raises(helper_error, match="Request body exceeds"):
-        _ = load(argparse.Namespace(body_json=None, body_file=FakeSpecFile(over)))
+        _ = load(over_arguments)
     assert over.closed
     assert over.read_sizes == [len(document) + 1]
 
     invalid_utf8 = RecordingStream(b"\xff")
+    invalid_utf8_arguments = argparse.Namespace(body_json=None, body_file=FakeSpecFile(invalid_utf8))
     with pytest.raises(helper_error, match="valid UTF-8 JSON"):
-        _ = load(argparse.Namespace(body_json=None, body_file=FakeSpecFile(invalid_utf8)))
+        _ = load(invalid_utf8_arguments)
     assert invalid_utf8.closed
 
 
@@ -1581,22 +1631,26 @@ def test_request_json_depth_node_and_string_boundaries(monkeypatch: pytest.Monke
 
     monkeypatch.setattr(UPTIMEROBOT, "MAX_REQUEST_JSON_DEPTH", 2)
     assert load(argparse.Namespace(body_json="[[0]]", body_file=None)) == [[0]]
+    too_deep_arguments = argparse.Namespace(body_json="[[[0]]]", body_file=None)
     with pytest.raises(helper_error, match="2-level JSON depth limit"):
-        _ = load(argparse.Namespace(body_json="[[[0]]]", body_file=None))
+        _ = load(too_deep_arguments)
 
     monkeypatch.setattr(UPTIMEROBOT, "MAX_REQUEST_JSON_DEPTH", 64)
     monkeypatch.setattr(UPTIMEROBOT, "MAX_REQUEST_JSON_NODES", 3)
     assert load(argparse.Namespace(body_json="[0,1]", body_file=None)) == [0, 1]
+    too_many_nodes_arguments = argparse.Namespace(body_json="[0,1,2]", body_file=None)
     with pytest.raises(helper_error, match="3-node JSON safety limit"):
-        _ = load(argparse.Namespace(body_json="[0,1,2]", body_file=None))
+        _ = load(too_many_nodes_arguments)
 
     monkeypatch.setattr(UPTIMEROBOT, "MAX_REQUEST_JSON_NODES", 100)
     monkeypatch.setattr(UPTIMEROBOT, "MAX_REQUEST_JSON_STRING_CHARS", 3)
     assert load(argparse.Namespace(body_json='{"abc":"xyz"}', body_file=None)) == {"abc": "xyz"}
+    long_key_arguments = argparse.Namespace(body_json='{"abcd":"xyz"}', body_file=None)
     with pytest.raises(helper_error, match="3-character JSON string limit"):
-        _ = load(argparse.Namespace(body_json='{"abcd":"xyz"}', body_file=None))
+        _ = load(long_key_arguments)
+    long_value_arguments = argparse.Namespace(body_json='{"abc":"xyzz"}', body_file=None)
     with pytest.raises(helper_error, match="3-character JSON string limit"):
-        _ = load(argparse.Namespace(body_json='{"abc":"xyzz"}', body_file=None))
+        _ = load(long_value_arguments)
 
 
 @pytest.mark.parametrize("invalid_body", [{"value": float("nan")}, {"value": float("inf")}])
@@ -1614,8 +1668,11 @@ def test_atomic_request_encoding_rejects_invalid_synthetic_bodies_before_opener(
         return FakeOpener([])
 
     monkeypatch.setattr(request, "build_opener", build_opener)
+    plan = request_plan("POST", body=invalid_body)
+    request_credential = credential()
+    arguments = request_arguments()
     with pytest.raises(helper_error, match="non-finite JSON number"):
-        _ = send(request_plan("POST", body=invalid_body), f"{API_BASE_URL}/monitors", credential(), request_arguments())
+        _ = send(plan, f"{API_BASE_URL}/monitors", request_credential, arguments)
     assert build_calls == []
 
 
@@ -1643,8 +1700,11 @@ def test_atomic_request_encoding_honors_exact_and_one_over_byte_limits(
 
     monkeypatch.setattr(request, "build_opener", build_opener)
     monkeypatch.setattr(UPTIMEROBOT, "MAX_REQUEST_BODY_BYTES", len(encoded) - 1)
+    oversized_plan = request_plan("POST", body=body)
+    request_credential = credential()
+    arguments = request_arguments()
     with pytest.raises(helper_error, match="Request body exceeds"):
-        _ = send(request_plan("POST", body=body), f"{API_BASE_URL}/monitors", credential(), request_arguments())
+        _ = send(oversized_plan, f"{API_BASE_URL}/monitors", request_credential, arguments)
     assert build_calls == []
 
 
@@ -1677,12 +1737,15 @@ def test_write_response_consumption_failures_are_one_shot_and_indeterminate(
     else:
         outcome = http_failure_with_stream(status, stream)
     opener = install_opener(monkeypatch, [outcome])
+    plan = request_plan(method, body={"ordinary": "visible"})
+    main_credential = credential(RESERVED_MAIN_CREDENTIAL)
+    arguments = request_arguments(retries=10)
     with pytest.raises(helper_error) as caught:
         _ = send(
-            request_plan(method, body={"ordinary": "visible"}),
+            plan,
             f"{API_BASE_URL}/monitors",
-            credential(RESERVED_MAIN_CREDENTIAL),
-            request_arguments(retries=10),
+            main_credential,
+            arguments,
             secrets=(RESERVED_READ_CREDENTIAL, RESERVED_MAIN_CREDENTIAL),
         )
     message = str(caught.value)
@@ -1717,12 +1780,15 @@ def test_successful_write_response_parse_failures_are_indeterminate(
         body = b"[[[0]]]"
     response = FakeResponse(body)
     opener = install_opener(monkeypatch, [response])
+    plan = request_plan(method, body={"ordinary": "visible"})
+    request_credential = credential()
+    arguments = request_arguments(retries=10)
     with pytest.raises(helper_error) as caught:
         _ = send(
-            request_plan(method, body={"ordinary": "visible"}),
+            plan,
             f"{API_BASE_URL}/monitors",
-            credential(),
-            request_arguments(retries=10),
+            request_credential,
+            arguments,
         )
     message = str(caught.value)
     assert "HTTP 200" in message
@@ -1753,8 +1819,16 @@ def test_get_response_consumption_rules_remain_separate(monkeypatch: pytest.Monk
 
     malformed = FakeResponse(b"{")
     opener = install_opener(monkeypatch, [malformed])
+    malformed_plan = request_plan()
+    malformed_credential = credential()
+    malformed_arguments = request_arguments(retries=10)
     with pytest.raises(helper_error) as caught:
-        _ = send(request_plan(), f"{API_BASE_URL}/monitors", credential(), request_arguments(retries=10))
+        _ = send(
+            malformed_plan,
+            f"{API_BASE_URL}/monitors",
+            malformed_credential,
+            malformed_arguments,
+        )
     assert "may have succeeded" not in str(caught.value)
     assert "indeterminate" not in str(caught.value)
     assert len(opener.requests) == 1
@@ -1792,12 +1866,16 @@ def test_pagination_rejects_cross_collection_links_before_a_second_request(
         )
 
     monkeypatch.setattr(UPTIMEROBOT, "send_request", fake_send)
+    pagination_arguments = argparse.Namespace(max_pages=3, retries=0, timeout=1.0)
+    context = uptime_context()
+    plan = request_plan()
+    pagination_credential = credential()
     with pytest.raises(helper_error, match=r"exact collection endpoint path|configured /v3 base path"):
         paginate(
-            argparse.Namespace(max_pages=3, retries=0, timeout=1.0),
-            uptime_context(),
-            request_plan(),
-            credential(),
+            pagination_arguments,
+            context,
+            plan,
+            pagination_credential,
             f"{API_BASE_URL}/monitors",
         )
     assert calls == [f"{API_BASE_URL}/monitors"]
@@ -1833,6 +1911,7 @@ def test_direct_extreme_integer_timeout_uses_the_bounded_validation_error() -> N
     """Keep direct-call namespaces from leaking float conversion overflows."""
     validate_timeout = cast("Callable[[argparse.Namespace], float]", member("validated_timeout"))
     helper_error = cast("type[Exception]", member("UptimeRobotCliError"))
+    arguments = argparse.Namespace(timeout=10**10_000)
 
     with pytest.raises(helper_error, match="at most 300"):
-        _ = validate_timeout(argparse.Namespace(timeout=10**10_000))
+        _ = validate_timeout(arguments)

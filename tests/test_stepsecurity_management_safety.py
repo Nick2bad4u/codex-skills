@@ -413,9 +413,10 @@ def test_get_redirect_budget_allows_its_boundary_and_rejects_the_next_hop(
         rejected_failures.append(failure)
         rejected_streams.append(stream)
     rejected_opener = install_opener(monkeypatch, rejected_failures)
+    rejected_runtime = runtime(retries=0)
 
     with pytest.raises(helper_error, match=rf"redirect limit of {redirect_limit}"):
-        _ = send_result("GET", request_runtime=runtime(retries=0))
+        _ = send_result("GET", request_runtime=rejected_runtime)
 
     assert len(rejected_opener.requests) == redirect_limit + 1
     assert all(stream.closed for stream in rejected_streams)
@@ -474,15 +475,11 @@ def test_write_http_failures_are_single_attempt_redacted_and_indeterminate(
     sleeps: list[float] = []
     monkeypatch.setattr(time, "sleep", sleeps.append)
     send = cast("Callable[..., object]", member("send_result"))
+    headers = {"Authorization": f"Bearer {credential_value}"}
+    request_runtime = runtime(retries=10)
 
     with pytest.raises(helper_error, match=r"(?i)indeterminate.*audit log") as caught:
-        _ = send(
-            method,
-            API_URL,
-            {"Authorization": f"Bearer {credential_value}"},
-            None,
-            runtime(retries=10),
-        )
+        _ = send(method, API_URL, headers, None, request_runtime)
 
     assert credential_value not in str(caught.value)
     assert "<redacted>" in str(caught.value)
@@ -513,15 +510,11 @@ def test_transport_failures_are_bounded_redacted_and_writes_are_indeterminate(
         failure = transport_failure(failure_kind, credential_value)
     opener = install_opener(monkeypatch, [failure, FakeResponse(b'{"unexpected":true}')])
     send = cast("Callable[..., object]", member("send_result"))
+    headers = {"Authorization": f"Bearer {credential_value}"}
+    request_runtime = runtime(retries=10)
 
     with pytest.raises(helper_error) as caught:
-        _ = send(
-            method,
-            API_URL,
-            {"Authorization": f"Bearer {credential_value}"},
-            None,
-            runtime(retries=10),
-        )
+        _ = send(method, API_URL, headers, None, request_runtime)
 
     message = str(caught.value)
     assert credential_value not in message
@@ -549,15 +542,11 @@ def test_body_transport_failures_are_safe_closed_single_attempt_and_cli_clean(
     outcome, close_evidence = body_failure_outcome(response_kind, failure)
     opener = install_opener(monkeypatch, [outcome, FakeResponse(b'{"unexpected":true}')])
     send = cast("Callable[..., object]", member("send_result"))
+    headers = {"Authorization": f"Bearer {credential_value}"}
+    request_runtime = runtime(retries=10)
 
     with pytest.raises(helper_error) as caught:
-        _ = send(
-            method,
-            API_URL,
-            {"Authorization": f"Bearer {credential_value}"},
-            None,
-            runtime(retries=10),
-        )
+        _ = send(method, API_URL, headers, None, request_runtime)
 
     message = str(caught.value)
     assert credential_value not in message
@@ -618,9 +607,10 @@ def test_non_get_read_methods_do_not_retry_http_failures(
     opener = install_opener(monkeypatch, [failure, FakeResponse(b'{"unexpected":true}')])
     sleeps: list[float] = []
     monkeypatch.setattr(time, "sleep", sleeps.append)
+    request_runtime = runtime(retries=10)
 
     with pytest.raises(helper_error, match="HTTP 503"):
-        _ = send_result(method, request_runtime=runtime(retries=10))
+        _ = send_result(method, request_runtime=request_runtime)
 
     assert len(opener.requests) == 1
     assert sleeps == []
@@ -677,16 +667,14 @@ def test_response_json_depth_is_bounded_redacted_closed_and_write_safe(
     opener = install_opener(monkeypatch, [outcome, FakeResponse(b'{"unexpected":true}')])
     send = cast("Callable[..., object]", member("send_result"))
     must_fail = response_kind == "http-error-body" or not accepted
+    headers, failure_runtime = (
+        {"Authorization": f"Bearer {credential_value}"},
+        runtime(retries=10),
+    )
 
     if must_fail:
         with pytest.raises(helper_error) as caught:
-            _ = send(
-                method,
-                API_URL,
-                {"Authorization": f"Bearer {credential_value}"},
-                None,
-                runtime(retries=10),
-            )
+            _ = send(method, API_URL, headers, None, failure_runtime)
         message = str(caught.value)
         assert credential_value not in message
         assert len(message) < MAX_SAFE_ERROR_MESSAGE_LENGTH
@@ -901,15 +889,11 @@ def test_close_failures_are_attempted_bounded_redacted_and_cli_clean(
     )
     opener = install_opener(monkeypatch, [outcome, FakeResponse(b'{"unexpected":true}')])
     send = cast("Callable[..., object]", member("send_result"))
+    headers = {"Authorization": f"Bearer {credential_value}"}
+    request_runtime = runtime(retries=10)
 
     with pytest.raises(helper_error) as caught:
-        _ = send(
-            method,
-            API_URL,
-            {"Authorization": f"Bearer {credential_value}"},
-            None,
-            runtime(retries=10),
-        )
+        _ = send(method, API_URL, headers, None, request_runtime)
 
     message = str(caught.value)
     assert message.startswith("Request failed:")
@@ -973,9 +957,10 @@ def test_json_surfaces_reject_non_finite_values_and_output_cycles(
     parse_response_function = cast("Callable[[bytes, str], object]", member("parse_response"))
     redact_function = cast("Callable[[object], object]", member("redact"))
     emit_function = cast("Callable[[object], None]", member("emit"))
+    body_arguments = argparse.Namespace(body='{"value":NaN}', body_file=None)
 
     with pytest.raises(helper_error, match="finite JSON numbers"):
-        _ = body_bytes_function(argparse.Namespace(body='{"value":NaN}', body_file=None))
+        _ = body_bytes_function(body_arguments)
     with pytest.raises(helper_error, match="finite JSON numbers"):
         _ = parse_response_function(b'{"value":Infinity}', "application/json")
     with pytest.raises(helper_error, match="finite JSON numbers"):
@@ -1236,9 +1221,10 @@ def test_repeated_pagination_link_is_detected_before_another_request(monkeypatch
 
     monkeypatch.setattr(STEPSECURITY, "send_result", fake_send_result)
     execute = cast("Callable[[argparse.Namespace], None]", member("execute_request"))
+    arguments = execute_arguments(max_pages=NATURAL_MAX_PAGES)
 
     with pytest.raises(helper_error, match=r"incomplete after 2 page\(s\).*repeated next link"):
-        execute(execute_arguments(max_pages=NATURAL_MAX_PAGES))
+        execute(arguments)
 
     assert urls == [API_URL, f"{API_URL}?page=2"]
 
@@ -1263,13 +1249,14 @@ def test_pagination_enforces_exact_cumulative_response_budget(
     second = FakeResponse(second_body)
     opener = install_opener(monkeypatch, [first, second])
     execute = cast("Callable[[argparse.Namespace], None]", member("execute_request"))
+    arguments = execute_arguments(max_pages=NATURAL_MAX_PAGES)
 
     if overflow:
         with pytest.raises(helper_error, match=rf"{cumulative_limit}-byte cumulative safety limit"):
-            execute(execute_arguments(max_pages=NATURAL_MAX_PAGES))
+            execute(arguments)
         assert emitted == []
     else:
-        execute(execute_arguments(max_pages=NATURAL_MAX_PAGES))
+        execute(arguments)
         output = cast("dict[str, object]", emitted[0])
         assert output["complete"] is True
         assert output["pageCount"] == EXPECTED_PAGE_COUNT
@@ -1286,9 +1273,10 @@ def test_non_positive_or_non_finite_timeouts_are_rejected(timeout: float) -> Non
     """NaN and infinity cannot bypass timeout validation."""
     helper_error = cast("type[Exception]", member("StepSecurityError"))
     validate = cast("Callable[[argparse.Namespace], None]", member("validate_arguments"))
+    arguments = argparse.Namespace(max_pages=1, retries=0, timeout=timeout)
 
     with pytest.raises(helper_error, match="finite value greater than zero"):
-        validate(argparse.Namespace(max_pages=1, retries=0, timeout=timeout))
+        validate(arguments)
 
 
 @pytest.mark.parametrize(
@@ -1305,9 +1293,10 @@ def test_page_and_retry_caps_reject_unbounded_values(name: str, value: int, mess
     helper_error = cast("type[Exception]", member("StepSecurityError"))
     validate = cast("Callable[[argparse.Namespace], None]", member("validate_arguments"))
     values = {"max_pages": 1, "retries": 0, "timeout": 1.0, name: value}
+    arguments = argparse.Namespace(**values)
 
     with pytest.raises(helper_error, match=message):
-        validate(argparse.Namespace(**values))
+        validate(arguments)
 
 
 def test_numeric_upper_boundaries_are_accepted() -> None:

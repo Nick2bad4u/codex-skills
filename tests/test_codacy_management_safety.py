@@ -279,21 +279,20 @@ def test_non_get_is_single_attempt_after_http_or_transport_failure(monkeypatch: 
     monkeypatch.setattr(time, "sleep", sleeps.append)
 
     http_opener = install_opener(monkeypatch, [http_failure(), FakeResponse(b'{"unexpected":true}')])
+    active_context = context()
+    post_plan = plan("POST", operation_id="searchRepositoryIssues")
+    request_runtime = runtime()
     with pytest.raises(helper_error, match=r"(?is)HTTP 503.*indeterminate"):
-        _ = send(
-            context(),
-            plan("POST", operation_id="searchRepositoryIssues"),
-            query={},
-            runtime=runtime(),
-        )
+        _ = send(active_context, post_plan, query={}, runtime=request_runtime)
     assert len(http_opener.requests) == 1
 
     timeout_opener = install_opener(
         monkeypatch,
         [error.URLError(TimeoutError("timed out")), FakeResponse(b'{"unexpected":true}')],
     )
+    delete_plan = plan("DELETE")
     with pytest.raises(helper_error, match=r"(?is)Unable to reach Codacy.*indeterminate"):
-        _ = send(context(), plan("DELETE"), query={}, runtime=runtime())
+        _ = send(active_context, delete_plan, query={}, runtime=request_runtime)
     assert len(timeout_opener.requests) == 1
     assert sleeps == []
 
@@ -322,9 +321,12 @@ def test_ambiguous_write_http_statuses_never_replay_and_close(
     opener = install_opener(monkeypatch, [failure, FakeResponse(b'{"unexpected":true}')])
     sleeps: list[float] = []
     monkeypatch.setattr(time, "sleep", sleeps.append)
+    active_context = context()
+    request_plan = plan(method)
+    request_runtime = runtime()
 
     with pytest.raises(helper_error, match=rf"(?is)HTTP {status}.*indeterminate.*Verify current Codacy state"):
-        _ = send(context(), plan(method), query={}, runtime=runtime())
+        _ = send(active_context, request_plan, query={}, runtime=request_runtime)
 
     assert len(opener.requests) == 1
     assert failure_stream.closed
@@ -348,9 +350,12 @@ def test_non_get_read_exceptions_are_closed_and_never_replayed(
     helper_error = cast("type[Exception]", member("CodacyCliError"))
     response = FakeResponse(b"{}", read_error=read_error)
     opener = install_opener(monkeypatch, [response, FakeResponse(b'{"unexpected":true}')])
+    active_context = context()
+    request_plan = plan(method)
+    request_runtime = runtime()
 
     with pytest.raises(helper_error, match=r"(?is)Unable to read or process.*indeterminate.*Verify") as caught:
-        _ = send(context(), plan(method), query={}, runtime=runtime())
+        _ = send(active_context, request_plan, query={}, runtime=request_runtime)
 
     assert "sensitive" not in str(caught.value)
     assert len(opener.requests) == 1
@@ -367,16 +372,20 @@ def test_non_get_oversize_and_nonfinite_responses_are_single_attempt(
 
     oversized = FakeResponse(b"x" * 9)
     oversized_opener = install_opener(monkeypatch, [oversized, FakeResponse(b'{"unexpected":true}')])
+    active_context = context()
+    post_plan = plan("POST")
+    request_runtime = runtime()
     with pytest.raises(helper_error, match=r"(?is)8-byte safety limit.*indeterminate.*Verify"):
-        _ = send(context(), plan("POST"), query={}, runtime=runtime())
+        _ = send(active_context, post_plan, query={}, runtime=request_runtime)
     assert len(oversized_opener.requests) == 1
     assert oversized.closed
 
     monkeypatch.setattr(CODACY, "MAX_API_RESPONSE_BYTES", 1024)
     nonfinite = FakeResponse(b'{"value":NaN}')
     nonfinite_opener = install_opener(monkeypatch, [nonfinite, FakeResponse(b'{"unexpected":true}')])
+    patch_plan = plan("PATCH")
     with pytest.raises(helper_error, match=r"(?is)non-finite.*indeterminate.*Verify"):
-        _ = send(context(), plan("PATCH"), query={}, runtime=runtime())
+        _ = send(active_context, patch_plan, query={}, runtime=request_runtime)
     assert len(nonfinite_opener.requests) == 1
     assert nonfinite.closed
 
@@ -593,9 +602,11 @@ def test_direct_transport_rejects_active_token_before_open(
     helper_error = cast("type[Exception]", member("CodacyCliError"))
     opener = install_opener(monkeypatch, [FakeResponse(b'{"unexpected":true}')])
     unsafe_plan_view = cast("RequestPlanView", unsafe_plan)
+    active_context = context()
+    request_runtime = runtime(retries=0)
 
     with pytest.raises(helper_error, match="active Codacy credential"):
-        _ = send(context(), unsafe_plan, query=unsafe_plan_view.query, runtime=runtime(retries=0))
+        _ = send(active_context, unsafe_plan, query=unsafe_plan_view.query, runtime=request_runtime)
 
     assert opener.requests == []
 
@@ -612,14 +623,12 @@ def test_direct_transport_rejects_active_token_hostname_before_open(
     send = cast("Callable[..., object]", member("send_request"))
     helper_error = cast("type[Exception]", member("CodacyCliError"))
     opener = install_opener(monkeypatch, [FakeResponse(b'{"unexpected":true}')])
+    unsafe_context = context(base_url=f"https://{hostname}/api/v3")
+    request_plan = plan()
+    request_runtime = runtime(retries=0)
 
     with pytest.raises(helper_error, match="active Codacy credential"):
-        _ = send(
-            context(base_url=f"https://{hostname}/api/v3"),
-            plan(),
-            query={},
-            runtime=runtime(retries=0),
-        )
+        _ = send(unsafe_context, request_plan, query={}, runtime=request_runtime)
 
     assert opener.requests == []
 
@@ -629,14 +638,13 @@ def test_transport_revalidates_query_added_after_planning(monkeypatch: pytest.Mo
     send = cast("Callable[..., object]", member("send_request"))
     helper_error = cast("type[Exception]", member("CodacyCliError"))
     opener = install_opener(monkeypatch, [FakeResponse(b'{"unexpected":true}')])
+    active_context = context()
+    request_plan = plan()
+    unsafe_query = {"ordinary": encoded_text(TEST_CREDENTIAL)}
+    request_runtime = runtime(retries=0)
 
     with pytest.raises(helper_error, match="active Codacy credential"):
-        _ = send(
-            context(),
-            plan(),
-            query={"ordinary": encoded_text(TEST_CREDENTIAL)},
-            runtime=runtime(retries=0),
-        )
+        _ = send(active_context, request_plan, query=unsafe_query, runtime=request_runtime)
 
     assert opener.requests == []
 
@@ -871,14 +879,12 @@ def test_direct_request_rejects_non_finite_body_before_open(monkeypatch: pytest.
     send = cast("Callable[..., object]", member("send_request"))
     helper_error = cast("type[Exception]", member("CodacyCliError"))
     opener = install_opener(monkeypatch, [FakeResponse(b'{"unexpected":true}')])
+    active_context = context()
+    request_plan = plan(method="POST", body={"nested": [math.inf]})
+    request_runtime = runtime(retries=0)
 
     with pytest.raises(helper_error, match="strict JSON"):
-        _ = send(
-            context(),
-            plan(method="POST", body={"nested": [math.inf]}),
-            query={},
-            runtime=runtime(retries=0),
-        )
+        _ = send(active_context, request_plan, query={}, runtime=request_runtime)
     assert opener.requests == []
 
 
@@ -978,13 +984,14 @@ def test_extreme_json_depth_never_surfaces_recursion_or_leaf_text() -> None:
     helper_error = cast("type[Exception]", member("CodacyCliError"))
     marker = "extreme-depth-secret-marker"
     extreme_text = ("[" * 2000) + json.dumps(marker) + ("]" * 2000)
+    extreme_bytes = extreme_text.encode()
 
     with pytest.raises(helper_error) as request_failure:
         _ = load_json(extreme_text, "--body-json")
     with pytest.raises(helper_error) as response_failure:
-        _ = decode(extreme_text.encode(), TEST_CREDENTIAL)
+        _ = decode(extreme_bytes, TEST_CREDENTIAL)
 
-    response_error = http_failure(extreme_text.encode())
+    response_error = http_failure(extreme_bytes)
     try:
         error_details = read_error_body(response_error, TEST_CREDENTIAL)
     finally:
@@ -1005,9 +1012,10 @@ def test_openapi_download_rejects_oversize_without_content_length(monkeypatch: p
     response = FakeResponse(b"x" * 9)
     _ = install_opener(monkeypatch, [response])
     arguments = argparse.Namespace(spec_file=None, spec_url=None, timeout=1.0)
+    active_context = context()
 
     with pytest.raises(helper_error, match="8-byte safety limit"):
-        _ = load_openapi(arguments, context())
+        _ = load_openapi(arguments, active_context)
 
     assert response.read_sizes == [9]
 
@@ -1023,9 +1031,12 @@ def test_api_response_rejects_oversize_with_missing_or_dishonest_length(
     monkeypatch.setattr(CODACY, "MAX_API_RESPONSE_BYTES", 8)
     response = FakeResponse(b"x" * 9, content_length=content_length)
     opener = install_opener(monkeypatch, [response])
+    active_context = context()
+    request_plan = plan()
+    request_runtime = runtime(retries=0)
 
     with pytest.raises(helper_error, match="8-byte safety limit"):
-        _ = send(context(), plan(), query={}, runtime=runtime(retries=0))
+        _ = send(active_context, request_plan, query={}, runtime=request_runtime)
 
     assert len(opener.requests) == 1
     assert response.read_sizes == [9]
@@ -1038,9 +1049,12 @@ def test_api_response_rejects_oversize_declared_length_before_read(monkeypatch: 
     monkeypatch.setattr(CODACY, "MAX_API_RESPONSE_BYTES", 8)
     response = FakeResponse(b"{}", content_length="9")
     _ = install_opener(monkeypatch, [response])
+    active_context = context()
+    request_plan = plan()
+    request_runtime = runtime(retries=0)
 
     with pytest.raises(helper_error, match="8-byte safety limit"):
-        _ = send(context(), plan(), query={}, runtime=runtime(retries=0))
+        _ = send(active_context, request_plan, query={}, runtime=request_runtime)
 
     assert response.read_sizes == []
 
@@ -1144,9 +1158,11 @@ def test_direct_transport_rejects_invalid_runtime_before_open(monkeypatch: pytes
     helper_error = cast("type[Exception]", member("CodacyCliError"))
     opener = install_opener(monkeypatch, [FakeResponse(b'{"unexpected":true}')])
     invalid_runtime = runtime_factory(retries=11, retry_base_delay=math.nan, timeout=math.inf)
+    active_context = context()
+    request_plan = plan()
 
     with pytest.raises(helper_error):
-        _ = send(context(), plan(), query={}, runtime=invalid_runtime)
+        _ = send(active_context, request_plan, query={}, runtime=invalid_runtime)
     assert opener.requests == []
 
 
@@ -1286,9 +1302,12 @@ def test_pagination_rejects_present_malformed_metadata(
         )
 
     monkeypatch.setattr(CODACY, "send_request", fake_send)
+    active_context = context()
+    request_plan = plan()
+    request_runtime = runtime()
 
     with pytest.raises(helper_error, match=r"pagination|cursor"):
-        _ = paginate(context(), plan(), max_pages=2, runtime=runtime())
+        _ = paginate(active_context, request_plan, max_pages=2, runtime=request_runtime)
 
 
 @pytest.mark.parametrize("payload", [{"data": []}, {"data": [], "pagination": {}}])
@@ -1332,8 +1351,11 @@ def test_pagination_exact_max_page_fails_when_cursor_proves_incomplete(monkeypat
         )
 
     monkeypatch.setattr(CODACY, "send_request", fake_send)
+    active_context = context()
+    request_plan = plan()
+    request_runtime = runtime()
     with pytest.raises(helper_error, match="output is incomplete"):
-        _ = paginate(context(), plan(), max_pages=1, runtime=runtime())
+        _ = paginate(active_context, request_plan, max_pages=1, runtime=request_runtime)
     assert calls == 1
 
 
@@ -1367,8 +1389,11 @@ def test_pagination_enforces_cumulative_response_limit(monkeypatch: pytest.Monke
         return next(responses)
 
     monkeypatch.setattr(CODACY, "send_request", fake_send)
+    active_context = context()
+    request_plan = plan()
+    request_runtime = runtime()
 
     with pytest.raises(helper_error, match="10-byte cumulative safety limit"):
-        _ = paginate(context(), plan(), max_pages=3, runtime=runtime())
+        _ = paginate(active_context, request_plan, max_pages=3, runtime=request_runtime)
 
     assert calls == EXPECTED_PAGINATION_CALLS

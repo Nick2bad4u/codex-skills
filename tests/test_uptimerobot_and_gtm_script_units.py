@@ -642,8 +642,6 @@ def test_gtm_execute_pagination_and_confirmation(
     with pytest.raises(helper_error, match="compilerError=true"):
         _ = execute(confirmed_arguments, context, publish_plan)
     assert json_from_capture(capsys)["status"] == HTTP_OK
+    sync_error_result = result_type(payload={"syncStatus": {"syncError": True}}, status=200, url=publish_plan.url)
     with pytest.raises(helper_error, match=r"syncStatus\.syncError=true"):
-        validate_semantics(
-            publish_plan,
-            result_type(payload={"syncStatus": {"syncError": True}}, status=200, url=publish_plan.url),
-        )
+        validate_semantics(publish_plan, sync_error_result)
