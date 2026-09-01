@@ -62,7 +62,7 @@ async function auditResourceDirectory(
 ) {
     const resourceRoot = path.join(skillRoot, resourceKind);
 
-    if (!(await pathExists(resourceRoot))) {
+    if (!(await isPathPresent(resourceRoot))) {
         return;
     }
 
@@ -124,6 +124,27 @@ function hasEarlyContents(markdown) {
 }
 
 /**
+ * @param {string} targetPath
+ *
+ * @returns {Promise<boolean>}
+ */
+async function isPathPresent(targetPath) {
+    try {
+        await stat(targetPath);
+        return true;
+    } catch (error) {
+        if (
+            types.isNativeError(error) &&
+            "code" in error &&
+            error.code === "ENOENT"
+        ) {
+            return false;
+        }
+        throw error;
+    }
+}
+
+/**
  * @param {string} text
  *
  * @returns {string[]}
@@ -153,27 +174,6 @@ async function main() {
     }
 
     console.log(`Audited ${skillNames.length} skill resource surfaces.`);
-}
-
-/**
- * @param {string} targetPath
- *
- * @returns {Promise<boolean>}
- */
-async function pathExists(targetPath) {
-    try {
-        await stat(targetPath);
-        return true;
-    } catch (error) {
-        if (
-            types.isNativeError(error) &&
-            "code" in error &&
-            error.code === "ENOENT"
-        ) {
-            return false;
-        }
-        throw error;
-    }
 }
 
 /**
