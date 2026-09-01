@@ -995,36 +995,53 @@ def node_script_argv(manager: str, script: str) -> list[str]:
     return [manager, "run", script]
 
 
+def node_validation_command_specs(root: Path, owner: DependencyOwner) -> list[CommandSpec]:
+    """Return validation commands exposed by one Node package owner."""
+    scripts = read_package_scripts(root, owner.cwd)
+    return [
+        command_spec(owner.cwd, *node_script_argv(owner.manager, script))
+        for script in NODE_SCRIPT_PRIORITY
+        if script in scripts
+    ]
+
+
+def python_validation_command_specs(root: Path, owner: DependencyOwner) -> list[CommandSpec]:
+    """Return validation commands supported by one Python package owner."""
+    pyproject = read_text(root, owner.cwd, PYPROJECT_TOML)
+    commands: list[CommandSpec] = []
+    if "[tool.ruff" in pyproject:
+        commands.append(command_spec(owner.cwd, "ruff", "check", "."))
+        commands.append(command_spec(owner.cwd, "ruff", "format", "--check", "."))
+    if "[tool.mypy" in pyproject:
+        commands.append(command_spec(owner.cwd, "mypy"))
+    if "[tool.pyright" in pyproject:
+        commands.append(command_spec(owner.cwd, "pyright"))
+    if "[tool.pytest" in pyproject or path_exists(root, directory_path(owner.cwd, "pytest.ini")):
+        commands.append(command_spec(owner.cwd, "pytest"))
+    commands.append(command_spec(owner.cwd, "python", "-m", "compileall", "-q", "-x", r"[\\/]\.", "."))
+    return commands
+
+
+def validation_command_specs_for_owner(root: Path, owner: DependencyOwner) -> list[CommandSpec]:
+    """Return shell-free validation commands for one current owner."""
+    commands: list[CommandSpec] = []
+    if owner.manager in NODE_MANAGERS:
+        commands.extend(node_validation_command_specs(root, owner))
+    if owner.manager in {"uv", "poetry", "pip"}:
+        commands.extend(python_validation_command_specs(root, owner))
+    generic = MANAGER_VALIDATION_ARGV.get(owner.manager)
+    if generic is not None:
+        commands.append(command_spec(owner.cwd, *generic))
+    return commands
+
+
 def build_validation_command_specs(root: Path, owners: list[DependencyOwner]) -> list[CommandSpec]:
     """Build shell-free validation commands for each surviving owner."""
     commands: list[CommandSpec] = []
     for owner in owners:
         if not directory_exists(root, owner.cwd):
             continue
-        if owner.manager in NODE_MANAGERS:
-            scripts = read_package_scripts(root, owner.cwd)
-            commands.extend(
-                command_spec(owner.cwd, *node_script_argv(owner.manager, script))
-                for script in NODE_SCRIPT_PRIORITY
-                if script in scripts
-            )
-
-        if owner.manager in {"uv", "poetry", "pip"}:
-            pyproject = read_text(root, owner.cwd, PYPROJECT_TOML)
-            if "[tool.ruff" in pyproject:
-                commands.append(command_spec(owner.cwd, "ruff", "check", "."))
-                commands.append(command_spec(owner.cwd, "ruff", "format", "--check", "."))
-            if "[tool.mypy" in pyproject:
-                commands.append(command_spec(owner.cwd, "mypy"))
-            if "[tool.pyright" in pyproject:
-                commands.append(command_spec(owner.cwd, "pyright"))
-            if "[tool.pytest" in pyproject or path_exists(root, directory_path(owner.cwd, "pytest.ini")):
-                commands.append(command_spec(owner.cwd, "pytest"))
-            commands.append(command_spec(owner.cwd, "python", "-m", "compileall", "-q", "-x", r"[\\/]\.", "."))
-
-        generic = MANAGER_VALIDATION_ARGV.get(owner.manager)
-        if generic is not None:
-            commands.append(command_spec(owner.cwd, *generic))
+        commands.extend(validation_command_specs_for_owner(root, owner))
     return dedupe_specs(commands)
 
 
@@ -1033,6 +1050,38 @@ def yarn_update_argv(owner: DependencyOwner) -> list[str]:
     if owner.variant == "classic":
         return ["yarn", "upgrade", "--latest"]
     return ["yarn", "upgrade-interactive"]
+
+
+def node_update_command_specs(root: Path, owner: DependencyOwner) -> list[CommandSpec]:
+    """Return direct update scripts exposed by one Node package owner."""
+    scripts = read_package_scripts(root, owner.cwd)
+    return [
+        command_spec(owner.cwd, *node_script_argv(owner.manager, script))
+        for script in DIRECT_UPDATE_SCRIPTS
+        if script in scripts
+    ]
+
+
+def update_argv_for_owner(root: Path, owner: DependencyOwner) -> list[str] | None:
+    """Return the manager-native update argv for one current owner."""
+    manager_argv = MANAGER_UPDATE_ARGV.get(owner.manager)
+    argv = list(manager_argv) if manager_argv is not None else None
+    if owner.manager == "yarn":
+        return yarn_update_argv(owner)
+    if owner.manager == "pip":
+        requirements = current_requirements_for_owner(root, owner)
+        if requirements:
+            return ["python", "-m", "pip", "install", "--upgrade", "-r", requirements[0]]
+    return argv
+
+
+def update_command_specs_for_owner(root: Path, owner: DependencyOwner) -> list[CommandSpec]:
+    """Return shell-free update commands for one current owner."""
+    commands = node_update_command_specs(root, owner) if owner.manager in NODE_MANAGERS else []
+    argv = update_argv_for_owner(root, owner)
+    if argv is not None:
+        commands.append(command_spec(owner.cwd, *argv))
+    return commands
 
 
 def build_update_command_specs(
@@ -1049,23 +1098,7 @@ def build_update_command_specs(
     for owner in owners:
         if not directory_exists(root, owner.cwd):
             continue
-        if owner.manager in NODE_MANAGERS:
-            scripts = read_package_scripts(root, owner.cwd)
-            commands.extend(
-                command_spec(owner.cwd, *node_script_argv(owner.manager, script))
-                for script in DIRECT_UPDATE_SCRIPTS
-                if script in scripts
-            )
-        manager_argv = MANAGER_UPDATE_ARGV.get(owner.manager)
-        argv = list(manager_argv) if manager_argv is not None else None
-        if owner.manager == "yarn":
-            argv = yarn_update_argv(owner)
-        elif owner.manager == "pip":
-            requirements = current_requirements_for_owner(root, owner)
-            if requirements:
-                argv = ["python", "-m", "pip", "install", "--upgrade", "-r", requirements[0]]
-        if argv is not None:
-            commands.append(command_spec(owner.cwd, *argv))
+        commands.extend(update_command_specs_for_owner(root, owner))
     return dedupe_specs(commands)
 
 

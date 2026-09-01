@@ -1160,6 +1160,11 @@ def retries_are_safe(plan: RequestPlan) -> bool:
     return plan.method.upper() == "GET"
 
 
+def safe_retry_limit(plan: RequestPlan, runtime: RequestRuntime) -> int:
+    """Return the configured retry limit only for replay-safe requests."""
+    return runtime.retries if retries_are_safe(plan) else 0
+
+
 def retry_safety_label(plan: RequestPlan) -> str:
     """Describe the automatic retry policy in previews and output metadata."""
     return "automatic-for-get" if retries_are_safe(plan) else "disabled-for-non-get"
@@ -1310,6 +1315,56 @@ def retry_transport_error(attempt: int, retries: int, retry_base_delay: float) -
     return True
 
 
+def handle_http_request_error(
+    context: CodacyContext,
+    plan: RequestPlan,
+    exception: error.HTTPError,
+    *,
+    attempt: int,
+    runtime: RequestRuntime,
+) -> None:
+    """Retry one safe HTTP failure or raise a bounded error, then close it."""
+    try:
+        if retry_http_error(exception, attempt, safe_retry_limit(plan, runtime), runtime.retry_base_delay):
+            return
+        raise_api_http_error(context, plan, exception)
+    finally:
+        exception.close()
+
+
+def handle_post_send_request_error(
+    plan: RequestPlan,
+    exception: PostSendResponseError,
+    *,
+    attempt: int,
+    runtime: RequestRuntime,
+) -> None:
+    """Retry one safe post-send failure or raise fail-closed guidance."""
+    if retry_post_send_error(exception, attempt, safe_retry_limit(plan, runtime), runtime.retry_base_delay):
+        return
+    raise_post_send_failure(
+        plan,
+        exception.cause,
+        "Unable to read or process the Codacy API response.",
+    )
+
+
+def handle_transport_request_error(
+    plan: RequestPlan,
+    exception: error.URLError | TimeoutError,
+    *,
+    attempt: int,
+    runtime: RequestRuntime,
+) -> None:
+    """Retry one safe transport failure or raise redacted reachability guidance."""
+    if retry_transport_error(attempt, safe_retry_limit(plan, runtime), runtime.retry_base_delay):
+        return
+    reason = exception.reason if isinstance(exception, error.URLError) else exception
+    guidance = indeterminate_write_guidance(plan)
+    separator = " " if guidance else ""
+    raise CodacyCliError(f"Unable to reach Codacy: {safe_exception_text(reason)}{separator}{guidance}") from exception
+
+
 def send_request(
     context: CodacyContext,
     plan: RequestPlan,
@@ -1322,7 +1377,7 @@ def send_request(
     _ = validate_plan_credential_boundaries(context, plan, url)
     validate_request_runtime(runtime)
     headers, body_bytes = prepare_api_request(context, plan)
-    retries = runtime.retries if retries_are_safe(plan) else 0
+    retries = safe_retry_limit(plan, runtime)
     for attempt in range(retries + 1):
         api_request = request.Request(  # noqa: S310  # build_url enforces the configured HTTPS origin and base.
             url,
@@ -1340,29 +1395,27 @@ def send_request(
                 url=url,
             )
         except error.HTTPError as exception:
-            try:
-                if retry_http_error(exception, attempt, retries, runtime.retry_base_delay):
-                    continue
-                raise_api_http_error(context, plan, exception)
-            finally:
-                exception.close()
-        except PostSendResponseError as exception:
-            if retry_post_send_error(exception, attempt, retries, runtime.retry_base_delay):
-                continue
-            raise_post_send_failure(
+            handle_http_request_error(
+                context,
                 plan,
-                exception.cause,
-                "Unable to read or process the Codacy API response.",
+                exception,
+                attempt=attempt,
+                runtime=runtime,
+            )
+        except PostSendResponseError as exception:
+            handle_post_send_request_error(
+                plan,
+                exception,
+                attempt=attempt,
+                runtime=runtime,
             )
         except (error.URLError, TimeoutError) as exception:
-            if retry_transport_error(attempt, retries, runtime.retry_base_delay):
-                continue
-            reason = exception.reason if isinstance(exception, error.URLError) else exception
-            guidance = indeterminate_write_guidance(plan)
-            separator = " " if guidance else ""
-            raise CodacyCliError(
-                f"Unable to reach Codacy: {safe_exception_text(reason)}{separator}{guidance}"
-            ) from exception
+            handle_transport_request_error(
+                plan,
+                exception,
+                attempt=attempt,
+                runtime=runtime,
+            )
     raise CodacyCliError("Codacy request retry loop ended unexpectedly.")
 
 
