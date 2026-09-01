@@ -276,7 +276,7 @@ def strict_json_value(text: str, *, source: str) -> JsonValue:
     """Decode one standards-compliant JSON value."""
     try:
         return cast("JsonValue", json.loads(text, parse_constant=reject_non_json_constant))
-    except (json.JSONDecodeError, ValueError) as exception:
+    except ValueError as exception:
         raise GoogleTagManagerCliError(
             f"Expected JSON from {source}; values must be standards-compliant."
         ) from exception
@@ -830,6 +830,98 @@ def safe_transport_reason(reason: object, secret: str) -> str:
     return f"[untrusted-gtm-text] transport details omitted{suffix}"
 
 
+def encode_request_body(body: JsonValue) -> bytes | None:
+    """Serialize one optional request body as finite compact JSON."""
+    if body is None:
+        return None
+    try:
+        return json.dumps(body, allow_nan=False, separators=(",", ":")).encode()
+    except ValueError as exception:
+        raise GoogleTagManagerCliError("Request body must contain only finite JSON numbers.") from exception
+
+
+def request_headers(credential: Credential, *, has_body: bool) -> dict[str, str]:
+    """Build authenticated request headers without exposing the credential elsewhere."""
+    headers = {
+        "Accept": JSON_MEDIA_TYPE,
+        "Authorization": f"Bearer {credential.value}",
+        "User-Agent": "codex-google-tag-manager-management/1",
+    }
+    if has_body:
+        headers["Content-Type"] = JSON_MEDIA_TYPE
+    return headers
+
+
+def open_api_result(
+    opener: request.OpenerDirector,
+    api_request: request.Request,
+    *,
+    timeout: float,
+    url: str,
+) -> ApiResult:
+    """Open one request and decode its bounded successful response."""
+    with opener.open(api_request, timeout=timeout) as response:
+        status = int(response.status)
+        data = read_bounded_response(
+            response,
+            max_bytes=MAX_API_RESPONSE_BYTES,
+            label="Tag Manager API response",
+        )
+        payload = response_payload(data, response.headers.get("Content-Type", ""))
+        if status < HTTP_SUCCESS_MIN or status >= HTTP_SUCCESS_LIMIT:
+            raise GoogleTagManagerCliError(f"API request returned unexpected HTTP {status}.")
+        return ApiResult(payload=payload, status=status, url=url, response_bytes=len(data))
+
+
+def error_guidance(method: str, status: int) -> tuple[str, str]:
+    """Return optional write-recovery guidance and its separator."""
+    guidance = indeterminate_write_guidance(method) if status in RETRYABLE_STATUS_CODES else ""
+    return guidance, " " if guidance else ""
+
+
+def retry_or_raise_http_error(
+    exception: error.HTTPError,
+    *,
+    attempt: int,
+    retries: int,
+    method: str,
+    secret: str,
+) -> bool:
+    """Retry eligible GET failures or raise one bounded HTTP error."""
+    try:
+        details = read_error_body(exception, secret)
+    except GoogleTagManagerCliError as body_error:
+        guidance, separator = error_guidance(method, exception.code)
+        raise GoogleTagManagerCliError(f"{body_error}{separator}{guidance}") from exception
+    if exception.code in RETRYABLE_STATUS_CODES and attempt < retries:
+        time.sleep(retry_delay(exception, attempt))
+        return True
+    guidance, separator = error_guidance(method, exception.code)
+    raise GoogleTagManagerCliError(
+        f"API request failed with HTTP {exception.code}: {details}{separator}{guidance}"
+    ) from exception
+
+
+def retry_or_raise_transport_error(
+    exception: error.URLError | TimeoutError,
+    *,
+    attempt: int,
+    retries: int,
+    method: str,
+    secret: str,
+) -> bool:
+    """Retry eligible GET transport failures or raise one bounded error."""
+    if attempt < retries:
+        time.sleep(transport_retry_delay(attempt))
+        return True
+    reason = exception.reason if isinstance(exception, error.URLError) else exception
+    guidance = indeterminate_write_guidance(method)
+    separator = " " if guidance else ""
+    raise GoogleTagManagerCliError(
+        f"API request failed: {safe_transport_reason(reason, secret)}{separator}{guidance}"
+    ) from exception
+
+
 def send_request(
     plan: RequestPlan,
     url: str,
@@ -838,17 +930,8 @@ def send_request(
 ) -> ApiResult:
     """Send one request, automatically replaying GET and no other method."""
     reject_credential_reuse(credential, plan.body, url)
-    headers = {
-        "Accept": JSON_MEDIA_TYPE,
-        "Authorization": f"Bearer {credential.value}",
-        "User-Agent": "codex-google-tag-manager-management/1",
-    }
-    try:
-        body = None if plan.body is None else json.dumps(plan.body, allow_nan=False, separators=(",", ":")).encode()
-    except ValueError as exception:
-        raise GoogleTagManagerCliError("Request body must contain only finite JSON numbers.") from exception
-    if body is not None:
-        headers["Content-Type"] = JSON_MEDIA_TYPE
+    body = encode_request_body(plan.body)
+    headers = request_headers(credential, has_body=body is not None)
     opener = request.build_opener(NoRedirectHandler())
     retries = int(arguments.retries) if method_is_get(plan.method) else 0
     for attempt in range(retries + 1):
@@ -859,47 +942,28 @@ def send_request(
             method=plan.method,
         )
         try:
-            with opener.open(api_request, timeout=float(arguments.timeout)) as response:
-                status = int(response.status)
-                data = read_bounded_response(
-                    response,
-                    max_bytes=MAX_API_RESPONSE_BYTES,
-                    label="Tag Manager API response",
-                )
-                payload = response_payload(data, response.headers.get("Content-Type", ""))
-                if status < HTTP_SUCCESS_MIN or status >= HTTP_SUCCESS_LIMIT:
-                    raise GoogleTagManagerCliError(f"API request returned unexpected HTTP {status}.")
-                return ApiResult(payload=payload, status=status, url=url, response_bytes=len(data))
+            return open_api_result(opener, api_request, timeout=float(arguments.timeout), url=url)
         except error.HTTPError as exception:
             try:
-                try:
-                    details = read_error_body(exception, credential.value)
-                except GoogleTagManagerCliError as body_error:
-                    guidance = (
-                        indeterminate_write_guidance(plan.method) if exception.code in RETRYABLE_STATUS_CODES else ""
-                    )
-                    separator = " " if guidance else ""
-                    raise GoogleTagManagerCliError(f"{body_error}{separator}{guidance}") from exception
-                if exception.code in RETRYABLE_STATUS_CODES and attempt < retries:
-                    time.sleep(retry_delay(exception, attempt))
+                if retry_or_raise_http_error(
+                    exception,
+                    attempt=attempt,
+                    retries=retries,
+                    method=plan.method,
+                    secret=credential.value,
+                ):
                     continue
-                guidance = indeterminate_write_guidance(plan.method) if exception.code in RETRYABLE_STATUS_CODES else ""
-                separator = " " if guidance else ""
-                raise GoogleTagManagerCliError(
-                    f"API request failed with HTTP {exception.code}: {details}{separator}{guidance}"
-                ) from exception
             finally:
                 exception.close()
         except (error.URLError, TimeoutError) as exception:
-            if attempt < retries:
-                time.sleep(transport_retry_delay(attempt))
+            if retry_or_raise_transport_error(
+                exception,
+                attempt=attempt,
+                retries=retries,
+                method=plan.method,
+                secret=credential.value,
+            ):
                 continue
-            reason = exception.reason if isinstance(exception, error.URLError) else exception
-            guidance = indeterminate_write_guidance(plan.method)
-            separator = " " if guidance else ""
-            raise GoogleTagManagerCliError(
-                f"API request failed: {safe_transport_reason(reason, credential.value)}{separator}{guidance}"
-            ) from exception
     raise GoogleTagManagerCliError("API request exhausted its retry budget.")
 
 

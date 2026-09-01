@@ -6,7 +6,6 @@ from __future__ import annotations
 
 import argparse
 import base64
-import binascii
 import json
 import math
 import os
@@ -46,7 +45,9 @@ MAX_RETRY_DELAY_SECONDS = 60.0
 MAX_ASCII_CONTROL_CODEPOINT = 31
 ASCII_DELETE_CODEPOINT = 127
 MIN_SCHEME_CREDENTIAL_CHARACTERS = 8
+SCHEME_CREDENTIAL_PARTS = 2
 WEBHOOK_FIELD_TOKEN_COUNT = 2
+REDACTED_TEXT = "<redacted>"
 OFFICIAL_REST_BASE_URLS = frozenset(
     {
         "https://api.au.snyk.io/rest",
@@ -80,7 +81,7 @@ GET_RETRYABLE_STATUS_CODES = frozenset(
 API_VERSION = re.compile(r"^\d{4}-\d{2}-\d{2}(?:~(?:beta|experimental))?$")
 PATH_PARAMETER = re.compile(r"\{([^{}]+)\}")
 CAMEL_BOUNDARY = re.compile(r"(?<=[a-z0-9])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z])")
-ACRONYM_PLURAL = re.compile(r"([A-Z]{2,})s\b")
+ACRONYM_PLURAL = re.compile(r"([A-Z]{2,}+)s\b")
 KEY_SEPARATOR = re.compile(r"[^A-Za-z0-9]+")
 SENSITIVE_NOUNS = frozenset(
     {"authorization", "cookie", "credential", "password", "secret", "session", "token", "webhook"}
@@ -136,17 +137,29 @@ SCHEME_PROSE_WORDS = frozenset(
         "was",
     }
 )
-AUTHORIZATION_ASSIGNMENT = re.compile(
-    r"(?i)\bauthorization\s*[:=]\s*(?:(?:bearer|token|basic)\s+)?(?:\"[^\"]+\"|'[^']+'|[^\s,;]+)"
+AUTHORIZATION_PREFIX_PATTERN = r"(?i)\bauthorization\s*[:=]\s*(?:(?:bearer|token|basic)\s+)?"
+AUTHORIZATION_ASSIGNMENTS = tuple(
+    re.compile(AUTHORIZATION_PREFIX_PATTERN + value_pattern)
+    for value_pattern in (r'"[^"]++"', r"'[^']++'", r"[^\s,;]++")
 )
 SCHEME_CREDENTIAL = re.compile(r"(?i)\b(?P<scheme>bearer|token|basic)\s+(?P<credential>\"[^\"]+\"|'[^']+'|[^\s,;]+)")
 URL_USERINFO = re.compile(r"(?i)(https?://)[^/@\s]+@")
+ASSIGNMENT_PREFIX_PATTERN = r"(?P<prefix>^|[?&;\s,{])"
+ASSIGNMENT_NAME_PATTERN = r"(?P<name>[a-z0-9_.%~-]+)"
+ASSIGNMENT_OPERATOR_PATTERN = r"(?P<operator>\s*[:=]\s*)"
+QUERY_CREDENTIAL_ASSIGNMENT = re.compile(
+    r"(?P<prefix>[?&])" + ASSIGNMENT_NAME_PATTERN + ASSIGNMENT_OPERATOR_PATTERN + r"(?P<value>[^&#;\s,}\]]+)",
+    re.IGNORECASE | re.MULTILINE,
+)
 QUOTED_CREDENTIAL_ASSIGNMENT = re.compile(
-    r"(?P<prefix>^|[?&;\s,{])(?P<name>[A-Za-z0-9_.%~-]+)(?P<operator>\s*[:=]\s*)(?P<quote>[\"'])(?P<value>.*?)(?P=quote)",
+    ASSIGNMENT_PREFIX_PATTERN
+    + ASSIGNMENT_NAME_PATTERN
+    + ASSIGNMENT_OPERATOR_PATTERN
+    + r"(?P<quote>[\"'])(?P<value>.*?)(?P=quote)",
     re.IGNORECASE | re.MULTILINE,
 )
 BARE_CREDENTIAL_ASSIGNMENT = re.compile(
-    r"(?P<prefix>^|[?&;\s,{])(?P<name>(?!(?:[A-Za-z]|https?|ftp)(?=\s*:))[A-Za-z0-9_.%~-]+)(?P<operator>\s*[:=]\s*)(?P<value>[^&#;\s,}\]]+)",
+    ASSIGNMENT_PREFIX_PATTERN + ASSIGNMENT_NAME_PATTERN + ASSIGNMENT_OPERATOR_PATTERN + r"(?P<value>[^&#;\s,}\]]+)",
     re.IGNORECASE | re.MULTILINE,
 )
 PERCENT_TRIPLET = re.compile(r"%[0-9A-Fa-f]{2}")
@@ -317,12 +330,20 @@ def is_credible_scheme_credential(scheme: str, value: str) -> bool:
     if scheme.casefold() == "basic":
         try:
             decoded = base64.b64decode(credential, validate=True)
-        except binascii.Error, ValueError:
+        except ValueError:
             return False
         return b":" in decoded
     if credential.casefold() in SCHEME_PROSE_WORDS:
         return False
     return len(credential) >= MIN_SCHEME_CREDENTIAL_CHARACTERS
+
+
+def redact_authorization_assignments(value: str) -> str:
+    """Redact quoted or bare Authorization assignments."""
+    redacted = value
+    for assignment_pattern in AUTHORIZATION_ASSIGNMENTS:
+        redacted = assignment_pattern.sub(REDACTED_TEXT, redacted)
+    return redacted
 
 
 def redact_untrusted_text(value: object, token: str | None, *, max_characters: int | None = None) -> str:
@@ -333,16 +354,20 @@ def redact_untrusted_text(value: object, token: str | None, *, max_characters: i
         credential = token.strip()
         if credential:
             credentials.add(credential)
-            scheme_match = re.fullmatch(r"(?:bearer|basic|token)\s+(.+)", credential, flags=re.IGNORECASE)
-            if scheme_match is not None:
-                credentials.add(scheme_match.group(1))
+            scheme_parts = credential.split(maxsplit=1)
+            if len(scheme_parts) == SCHEME_CREDENTIAL_PARTS and scheme_parts[0].casefold() in {
+                "bearer",
+                "basic",
+                "token",
+            }:
+                credentials.add(scheme_parts[1])
     for credential in sorted(credentials, key=len, reverse=True):
-        text = encoded_credential_pattern(credential).sub("<redacted>", text)
-    text = AUTHORIZATION_ASSIGNMENT.sub("<redacted>", text)
+        text = encoded_credential_pattern(credential).sub(REDACTED_TEXT, text)
+    text = redact_authorization_assignments(text)
 
     def redact_scheme_credential(match: re.Match[str]) -> str:
         if is_credible_scheme_credential(match.group("scheme"), match.group("credential")):
-            return "<redacted>"
+            return REDACTED_TEXT
         return match.group(0)
 
     text = SCHEME_CREDENTIAL.sub(redact_scheme_credential, text)
@@ -355,6 +380,7 @@ def redact_untrusted_text(value: object, token: str | None, *, max_characters: i
         quote = match.groupdict().get("quote", "")
         return f"{match.group('prefix')}{name}{match.group('operator')}{quote}<redacted>{quote}"
 
+    text = QUERY_CREDENTIAL_ASSIGNMENT.sub(redact_credential_assignment, text)
     text = QUOTED_CREDENTIAL_ASSIGNMENT.sub(redact_credential_assignment, text)
     text = BARE_CREDENTIAL_ASSIGNMENT.sub(redact_credential_assignment, text)
     if max_characters is not None and len(text) > max_characters:
@@ -388,7 +414,7 @@ def strict_json_loads(data: bytes | str, *, source: str) -> JsonValue:
             "JsonValue",
             json.loads(text, parse_constant=reject_json_constant, parse_float=strict_json_float),
         )
-    except (UnicodeDecodeError, json.JSONDecodeError, ValueError, OverflowError) as exception:
+    except (ValueError, OverflowError) as exception:
         raise SnykCliError(f"{source} returned malformed JSON or a nonfinite number.") from exception
 
 
@@ -872,7 +898,9 @@ def build_plan(arguments: argparse.Namespace, context: SnykContext) -> RequestPl
 def redact_json(value: JsonValue, token: str | None) -> JsonValue:
     """Redact normalized sensitive keys and credentials embedded in strings."""
     if isinstance(value, dict):
-        return {key: "<redacted>" if is_sensitive_key(key) else redact_json(item, token) for key, item in value.items()}
+        return {
+            key: REDACTED_TEXT if is_sensitive_key(key) else redact_json(item, token) for key, item in value.items()
+        }
     if isinstance(value, list):
         return [redact_json(item, token) for item in value]
     if isinstance(value, str):
@@ -981,6 +1009,42 @@ def should_retry_read(attempt: int, retries: int, *, is_get: bool) -> bool:
     return is_get and attempt < retries
 
 
+def handle_http_error_attempt(
+    exception: error.HTTPError,
+    *,
+    attempt: int,
+    retries: int,
+    is_get: bool,
+    token: str | None,
+) -> None:
+    """Delay one retryable GET failure or raise its final safe error."""
+    try:
+        if exception.code in GET_RETRYABLE_STATUS_CODES and should_retry_read(attempt, retries, is_get=is_get):
+            time.sleep(retry_delay(exception, attempt))
+            return
+        raise_http_error(exception, token, is_get=is_get)
+    finally:
+        exception.close()
+
+
+def handle_transport_error_attempt(
+    exception: error.URLError | OSError | HTTPException,
+    *,
+    attempt: int,
+    retries: int,
+    is_get: bool,
+    token: str | None,
+) -> None:
+    """Delay one retryable GET transport failure or raise its final safe error."""
+    if should_retry_read(attempt, retries, is_get=is_get):
+        time.sleep(retry_backoff_delay(attempt))
+        return
+    reason = exception.reason if isinstance(exception, error.URLError) else exception
+    if not is_get:
+        raise indeterminate_write_error(reason, token) from exception
+    raise SnykCliError(f"Snyk REST request failed: {safe_reason(reason, token)}") from exception
+
+
 def decode_success_response(
     stream: IO[bytes],
     headers: Message[str, str],
@@ -1056,21 +1120,23 @@ def send_request(context: SnykContext, plan: RequestPlan, arguments: argparse.Na
                     response_bytes=len(data),
                 )
         except error.HTTPError as exception:
-            try:
-                if exception.code in GET_RETRYABLE_STATUS_CODES and should_retry_read(attempt, retries, is_get=is_get):
-                    time.sleep(retry_delay(exception, attempt))
-                    continue
-                raise_http_error(exception, context.token, is_get=is_get)
-            finally:
-                exception.close()
+            handle_http_error_attempt(
+                exception,
+                attempt=attempt,
+                retries=retries,
+                is_get=is_get,
+                token=context.token,
+            )
+            continue
         except (error.URLError, OSError, HTTPException) as exception:
-            if should_retry_read(attempt, retries, is_get=is_get):
-                time.sleep(retry_backoff_delay(attempt))
-                continue
-            reason = exception.reason if isinstance(exception, error.URLError) else exception
-            if not is_get:
-                raise indeterminate_write_error(reason, context.token) from exception
-            raise SnykCliError(f"Snyk REST request failed: {safe_reason(reason, context.token)}") from exception
+            handle_transport_error_attempt(
+                exception,
+                attempt=attempt,
+                retries=retries,
+                is_get=is_get,
+                token=context.token,
+            )
+            continue
     raise SnykCliError("Snyk REST retry loop ended unexpectedly.")
 
 
@@ -1105,6 +1171,41 @@ def pagination_plan(context: SnykContext, plan: RequestPlan, next_link: str) -> 
     return RequestPlan(body=None, method="GET", operation_id=plan.operation_id, query=query, url=absolute)
 
 
+def pagination_page(payload: JsonValue) -> tuple[list[JsonValue], str | None]:
+    """Validate one JSON:API page and return its data plus optional next link."""
+    if not isinstance(payload, dict) or not isinstance(payload.get("data"), list):
+        raise SnykCliError("Paginated response must contain a data array.")
+    data = cast("list[JsonValue]", payload["data"])
+    links = payload.get("links")
+    if links is None:
+        return data, None
+    if not isinstance(links, dict):
+        raise SnykCliError("Paginated response links must be an object or null when present.")
+    next_link = links.get("next")
+    if next_link is None:
+        return data, None
+    if not isinstance(next_link, str) or not next_link.strip():
+        raise SnykCliError("links.next must be a non-empty string or null.")
+    return data, next_link
+
+
+def merged_pagination_result(
+    latest: ApiResult,
+    merged: list[JsonValue],
+    *,
+    pages: int,
+    response_bytes: int,
+) -> ApiResult:
+    """Build the stable terminal payload for fully consumed pagination."""
+    return ApiResult(
+        payload={"data": merged, "links": {"next": None}, "meta": {"pages": pages}},
+        status=latest.status,
+        sunset=latest.sunset,
+        url=latest.url,
+        response_bytes=response_bytes,
+    )
+
+
 def paginated_request(context: SnykContext, plan: RequestPlan, arguments: argparse.Namespace) -> ApiResult:
     """Follow JSON:API links.next until it is absent or null."""
     if plan.method != "GET":
@@ -1128,33 +1229,16 @@ def paginated_request(context: SnykContext, plan: RequestPlan, arguments: argpar
                     )
                 )
             )
-        payload = latest.payload
-        if not isinstance(payload, dict) or not isinstance(payload.get("data"), list):
-            raise SnykCliError("Paginated response must contain a data array.")
-        merged.extend(cast("list[JsonValue]", payload["data"]))
+        page_data, next_link = pagination_page(latest.payload)
+        merged.extend(page_data)
         response_bytes = next_response_bytes
-        if "links" not in payload or payload["links"] is None:
-            return ApiResult(
-                payload={"data": merged, "links": {"next": None}, "meta": {"pages": pages}},
-                status=latest.status,
-                sunset=latest.sunset,
-                url=latest.url,
-                response_bytes=response_bytes,
-            )
-        links = payload["links"]
-        if not isinstance(links, dict):
-            raise SnykCliError("Paginated response links must be an object or null when present.")
-        next_link = links.get("next")
         if next_link is None:
-            return ApiResult(
-                payload={"data": merged, "links": {"next": None}, "meta": {"pages": pages}},
-                status=latest.status,
-                sunset=latest.sunset,
-                url=latest.url,
+            return merged_pagination_result(
+                latest,
+                merged,
+                pages=pages,
                 response_bytes=response_bytes,
             )
-        if not isinstance(next_link, str) or not next_link.strip():
-            raise SnykCliError("links.next must be a non-empty string or null.")
         next_plan = pagination_plan(context, plan, next_link)
         canonical_next_url = canonical_request_url(next_plan)
         if canonical_next_url in seen_urls:

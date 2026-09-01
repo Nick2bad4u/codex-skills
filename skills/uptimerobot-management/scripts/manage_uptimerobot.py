@@ -62,6 +62,8 @@ ASCII_CONTROL_LIMIT = 32
 ASCII_DELETE = 127
 JSON_MEDIA_TYPE = "application/json"
 REDACTED_VALUE = "<redacted>"
+REQUEST_BODY_LABEL = "Request body"
+CREDENTIAL_QUERY_ERROR = "Refusing credential-like query parameter."
 HTTP_SUCCESS_MIN = 200
 HTTP_SUCCESS_LIMIT = 300
 RETRYABLE_GET_STATUS_CODES = frozenset({429, 500, 502, 503, 504})
@@ -1047,7 +1049,7 @@ def encode_request_body(value: JsonValue, *, sort_keys: bool = False) -> bytes:
     try:
         validate_json_tree(
             value,
-            label="Request body",
+            label=REQUEST_BODY_LABEL,
             max_depth=MAX_REQUEST_JSON_DEPTH,
             max_nodes=MAX_REQUEST_JSON_NODES,
             max_string_chars=MAX_REQUEST_JSON_STRING_CHARS,
@@ -1061,7 +1063,7 @@ def encode_request_body(value: JsonValue, *, sort_keys: bool = False) -> bytes:
         ).encode("utf-8")
     except StrictJsonError as exception:
         raise UptimeRobotCliError(str(exception)) from exception
-    except (RecursionError, TypeError, UnicodeEncodeError, ValueError) as exception:
+    except (RecursionError, TypeError, ValueError) as exception:
         raise UptimeRobotCliError("Request body could not be encoded as strict JSON.") from exception
     if len(encoded) > MAX_REQUEST_BODY_BYTES:
         raise UptimeRobotCliError(f"Request body exceeds the {MAX_REQUEST_BODY_BYTES}-byte safety limit.")
@@ -1280,7 +1282,7 @@ def parse_pairs(values: list[str], *, label: str, secrets: tuple[str, ...] = ())
         if name in result:
             raise UptimeRobotCliError(f"Duplicate {label} name: {name}")
         if label == "query" and is_sensitive_key(name):
-            raise UptimeRobotCliError("Refusing credential-like query parameter.")
+            raise UptimeRobotCliError(CREDENTIAL_QUERY_ERROR)
         result[name] = item_value
     return result
 
@@ -1304,7 +1306,7 @@ def parse_query_pairs(
         if text_contains_secret(name, secrets) or text_contains_secret(item_value, secrets):
             raise UptimeRobotCliError("Refusing configured credential in query value.")
         if is_sensitive_key(name):
-            raise UptimeRobotCliError("Refusing credential-like query parameter.")
+            raise UptimeRobotCliError(CREDENTIAL_QUERY_ERROR)
         if name in seen and not allow_repeated and name not in repeatable:
             raise UptimeRobotCliError(f"Duplicate query name: {name}")
         seen.add(name)
@@ -1322,7 +1324,7 @@ def load_body(arguments: argparse.Namespace) -> JsonValue:
                 body_bytes = read_bounded_stream(
                     stream,
                     max_bytes=MAX_REQUEST_BODY_BYTES,
-                    label="Request body",
+                    label=REQUEST_BODY_LABEL,
                 )
         except OSError as exception:
             raise UptimeRobotCliError(f"Could not read request body file: {body_file}") from exception
@@ -1342,7 +1344,7 @@ def load_body(arguments: argparse.Namespace) -> JsonValue:
     try:
         return strict_json_loads(
             body_text,
-            label="Request body",
+            label=REQUEST_BODY_LABEL,
             max_depth=MAX_REQUEST_JSON_DEPTH,
             max_nodes=MAX_REQUEST_JSON_NODES,
             max_string_chars=MAX_REQUEST_JSON_STRING_CHARS,
@@ -1482,7 +1484,7 @@ def validate_api_query(query: str) -> None:
         if has_residual_component_encoding(name) or has_residual_component_encoding(item_value):
             raise UptimeRobotCliError("Endpoint query contains residual percent encoding.")
         if is_sensitive_key(name):
-            raise UptimeRobotCliError("Refusing credential-like query parameter.")
+            raise UptimeRobotCliError(CREDENTIAL_QUERY_ERROR)
 
 
 def assert_safe_api_url(base_url: str, candidate: str, *, allow_query: bool) -> str:
@@ -1632,24 +1634,16 @@ def output_url_parts(value: str) -> tuple[parse.SplitResult, int | None, list[tu
     return parsed, port, pairs
 
 
-def redact_url_secrets(value: str, secrets: tuple[str, ...] = ()) -> str:
-    """Redact sensitive fields in absolute API URLs and relative pagination links."""
-    output_parts = output_url_parts(value)
-    if output_parts is None:
-        return redact_configured_secrets(value, secrets)
-    parsed, port, pairs = output_parts
+def is_output_url_candidate(value: str, parsed: parse.SplitResult) -> bool:
+    """Return whether a parsed value is an absolute or pagination-relative URL."""
     is_absolute = parsed.scheme.lower() in {"http", "https"} and parsed.hostname is not None
     is_relative = not parsed.scheme and not parsed.netloc and value.startswith(("/", "?"))
-    if not is_absolute and not is_relative:
-        return redact_configured_secrets(value, secrets)
-    if is_capability_url(value):
-        return REDACTED_VALUE
-    has_userinfo = parsed.username is not None or parsed.password is not None
-    if parsed.hostname is not None and text_contains_secret(parsed.hostname, secrets):
-        return REDACTED_VALUE
-    redacted_path = redact_configured_secrets(parsed.path, secrets)
-    redacted_fragment = redact_known_secrets(parsed.fragment, secrets)
-    redacted_pairs = [
+    return is_absolute or is_relative
+
+
+def redacted_url_pairs(pairs: list[tuple[str, str]], secrets: tuple[str, ...]) -> list[tuple[str, str]]:
+    """Redact sensitive values from parsed URL query pairs."""
+    return [
         (
             name,
             (
@@ -1660,19 +1654,51 @@ def redact_url_secrets(value: str, secrets: tuple[str, ...] = ()) -> str:
         )
         for name, item_value in pairs
     ]
-    if (
-        not has_userinfo
-        and redacted_path == parsed.path
-        and redacted_fragment == parsed.fragment
-        and redacted_pairs == pairs
+
+
+def redacted_userinfo_netloc(parsed: parse.SplitResult, port: int | None, *, has_userinfo: bool) -> str:
+    """Replace URL userinfo while preserving a parsed host and port."""
+    if not has_userinfo or parsed.hostname is None:
+        return parsed.netloc
+    host = f"[{parsed.hostname}]" if ":" in parsed.hostname else parsed.hostname
+    if port is not None:
+        host = f"{host}:{port}"
+    return f"{REDACTED_VALUE}@{host}"
+
+
+def redacted_url_parts_are_unchanged(
+    original: tuple[str, str, list[tuple[str, str]]],
+    redacted: tuple[str, str, list[tuple[str, str]]],
+    *,
+    has_userinfo: bool,
+) -> bool:
+    """Return whether URL reconstruction would make no redaction change."""
+    return not has_userinfo and redacted == original
+
+
+def redact_url_secrets(value: str, secrets: tuple[str, ...] = ()) -> str:
+    """Redact sensitive fields in absolute API URLs and relative pagination links."""
+    output_parts = output_url_parts(value)
+    if output_parts is None:
+        return redact_configured_secrets(value, secrets)
+    parsed, port, pairs = output_parts
+    if not is_output_url_candidate(value, parsed):
+        return redact_configured_secrets(value, secrets)
+    if is_capability_url(value):
+        return REDACTED_VALUE
+    has_userinfo = parsed.username is not None or parsed.password is not None
+    if parsed.hostname is not None and text_contains_secret(parsed.hostname, secrets):
+        return REDACTED_VALUE
+    redacted_path = redact_configured_secrets(parsed.path, secrets)
+    redacted_fragment = redact_known_secrets(parsed.fragment, secrets)
+    redacted_pairs = redacted_url_pairs(pairs, secrets)
+    if redacted_url_parts_are_unchanged(
+        (parsed.path, parsed.fragment, pairs),
+        (redacted_path, redacted_fragment, redacted_pairs),
+        has_userinfo=has_userinfo,
     ):
         return value
-    netloc = parsed.netloc
-    if has_userinfo and parsed.hostname is not None:
-        host = f"[{parsed.hostname}]" if ":" in parsed.hostname else parsed.hostname
-        if port is not None:
-            host = f"{host}:{port}"
-        netloc = f"{REDACTED_VALUE}@{host}"
+    netloc = redacted_userinfo_netloc(parsed, port, has_userinfo=has_userinfo)
     query = parse.urlencode(redacted_pairs, doseq=True, safe="<>")
     return parse.urlunsplit((parsed.scheme, netloc, redacted_path, query, redacted_fragment))
 
@@ -2089,7 +2115,7 @@ def consume_http_error_response(
             return consume_api_http_error(plan, http_error, attempt=attempt, retries=retries)
         except ResponseConsumptionError as response_error:
             raise_response_consumption_error(plan, int(http_error.code), response_error, secrets)
-        except (IncompleteRead, HTTPException, OSError, TypeError, ValueError) as response_error:
+        except (HTTPException, OSError, TypeError, ValueError) as response_error:
             raise_response_consumption_error(plan, int(http_error.code), response_error, secrets)
     finally:
         close_http_error(http_error)
@@ -2121,7 +2147,7 @@ def consume_opened_response(
             )
     except ResponseConsumptionError as response_error:
         raise_response_consumption_error(plan, response_status, response_error, prepared.secrets)
-    except (IncompleteRead, HTTPException, OSError, TypeError, ValueError) as response_error:
+    except (HTTPException, OSError, TypeError, ValueError) as response_error:
         raise_response_consumption_error(plan, response_status, response_error, prepared.secrets)
 
 

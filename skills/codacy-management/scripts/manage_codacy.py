@@ -28,6 +28,9 @@ if TYPE_CHECKING:
 
 type JsonValue = bool | int | float | str | list[JsonValue] | dict[str, JsonValue] | None
 type JsonContainer = list[JsonValue] | dict[str, JsonValue]
+type ObjectList = list[object]
+type ObjectContainer = ObjectList | dict[object, object]
+type RedactionTask = tuple[JsonValue, JsonContainer, str | int]
 
 DEFAULT_BASE_URL = "https://api.codacy.com/api/v3"
 DEFAULT_TOKEN_ENVS = ("CODACY_API_TOKEN",)
@@ -35,6 +38,10 @@ DEFAULT_TIMEOUT = 30.0
 DEFAULT_MAX_PAGES = 100
 DEFAULT_RETRIES = 2
 API_BASE_PATH = "/api/v3"
+CODACY_API_BASE_URL_LABEL = "Codacy API base URL"
+CODACY_ENDPOINT_LABEL = "Codacy endpoint"
+OPENAPI_SPECIFICATION_URL_LABEL = "OpenAPI specification URL"
+REQUEST_BODY_LABEL = "request body"
 ASCII_CONTROL_LIMIT = 32
 ASCII_DELETE = 127
 MAX_API_RESPONSE_BYTES = 8 * 1024 * 1024
@@ -68,7 +75,7 @@ OPENAPI_METHOD = re.compile(r"^ {4}(get|post|put|patch|delete):\s*$", re.IGNOREC
 OPENAPI_OPERATION_ID = re.compile(r"^ {6}operationId:(.+)$")
 OPENAPI_SUMMARY = re.compile(r"^ {6}summary:(.+)$")
 PATH_PARAMETER = re.compile(r"\{([^{}]+)\}")
-RETRY_AFTER_DELAY_SECONDS = re.compile(r"[0-9]+", re.ASCII)
+RETRY_AFTER_DELAY_SECONDS = re.compile(r"\d+", re.ASCII)
 ENCODED_PATH_CONTROL = re.compile(r"%(?:2e|2f|3f|23|5c|25)", re.IGNORECASE)
 SENSITIVE_KEY_CORE = r"api[-_]?key|auth(?:entication|orization)?|credential|pass(?:word|wd)|private[-_]?key|secret"
 SENSITIVE_KEY_SUFFIX = r"sig(?:nature)?|token|(?:^|[-_.])key(?:$|[-_.])"
@@ -264,10 +271,10 @@ def require_url_authority(parsed: parse.SplitResult, label: str) -> tuple[str, i
 def sanitize_base_url(value: str) -> str:
     """Validate and normalize a token-bearing Codacy v3 base URL."""
     base_url = value.strip()
-    parsed = split_url(base_url, "Codacy API base URL")
+    parsed = split_url(base_url, CODACY_API_BASE_URL_LABEL)
     if parsed.scheme.lower() != "https" or not parsed.netloc:
         raise CodacyCliError("Codacy API base URL must be an absolute HTTPS URL.")
-    _ = require_url_authority(parsed, "Codacy API base URL")
+    _ = require_url_authority(parsed, CODACY_API_BASE_URL_LABEL)
     if parsed.username is not None or parsed.password is not None:
         raise CodacyCliError("Codacy API base URL must not contain credentials.")
     if parsed.query or parsed.fragment:
@@ -373,7 +380,7 @@ def resolve_token(token_envs: list[str]) -> tuple[str | None, str | None]:
 def as_string_list(value: object, label: str) -> list[str]:
     """Validate a dynamic argparse value as a string list."""
     if isinstance(value, list):
-        items = cast("list[object]", value)
+        items = cast("ObjectList", value)
         if all(isinstance(item, str) for item in items):
             return [item for item in items if isinstance(item, str)]
     raise CodacyCliError(f"{label} must be a list of strings.")
@@ -384,7 +391,7 @@ def resolve_context(arguments: argparse.Namespace) -> CodacyContext:
     repository_root = cast("Path", arguments.repo)
     token, token_env_name = resolve_token(as_string_list(arguments.token_envs, "Token environments"))
     base_url = sanitize_base_url(str(arguments.base_url))
-    require_active_token_absent(base_url, token, "Codacy API base URL")
+    require_active_token_absent(base_url, token, CODACY_API_BASE_URL_LABEL)
     return CodacyContext(
         base_url=base_url,
         repository_root=repository_root,
@@ -457,10 +464,10 @@ def load_openapi_document(arguments: argparse.Namespace, context: CodacyContext)
             raise CodacyCliError("Codacy OpenAPI document is not valid UTF-8.") from exception
 
     spec_url = optional_text(arguments.spec_url) or derived_spec_url(context.base_url)
-    parsed = split_url(spec_url, "OpenAPI specification URL")
+    parsed = split_url(spec_url, OPENAPI_SPECIFICATION_URL_LABEL)
     if parsed.scheme.lower() != "https" or not parsed.netloc:
         raise CodacyCliError("OpenAPI specification URL must be an absolute HTTPS URL.")
-    _ = require_url_authority(parsed, "OpenAPI specification URL")
+    _ = require_url_authority(parsed, OPENAPI_SPECIFICATION_URL_LABEL)
     if parsed.username is not None or parsed.password is not None:
         raise CodacyCliError("OpenAPI specification URL must not contain credentials.")
     if parsed.fragment:
@@ -468,7 +475,7 @@ def load_openapi_document(arguments: argparse.Namespace, context: CodacyContext)
     for name, _value in parse.parse_qsl(parsed.query, keep_blank_values=True):
         if is_sensitive_name(name):
             raise CodacyCliError("Refusing token-like OpenAPI query parameter.")
-    require_active_token_absent(spec_url, context.token, "OpenAPI specification URL")
+    require_active_token_absent(spec_url, context.token, OPENAPI_SPECIFICATION_URL_LABEL)
     try:
         spec_request = request.Request(  # noqa: S310  # URL is validated as absolute HTTPS above.
             spec_url,
@@ -554,7 +561,7 @@ def require_active_token_absent(value: str, token: str | None, label: str) -> No
 def require_json_token_absent(value: JsonValue, token: str | None) -> None:
     """Iteratively reject an active token from bounded JSON keys and scalar strings."""
     try:
-        validate_json_tree(value, "request body")
+        validate_json_tree(value, REQUEST_BODY_LABEL)
     except JsonNestingError as exception:
         raise CodacyCliError(
             f"Request body exceeds the {MAX_JSON_NESTING_DEPTH}-level JSON nesting safety limit."
@@ -571,17 +578,27 @@ def require_json_token_absent(value: JsonValue, token: str | None) -> None:
         item = stack.pop()
         if isinstance(item, dict):
             for key, child in item.items():
-                require_active_token_absent(key, token, "request body")
+                require_active_token_absent(key, token, REQUEST_BODY_LABEL)
                 stack.append(child)
         elif isinstance(item, list):
             stack.extend(item)
         elif isinstance(item, str):
-            require_active_token_absent(item, token, "request body")
+            require_active_token_absent(item, token, REQUEST_BODY_LABEL)
 
 
 def reject_non_finite_constant(value: str) -> Never:
     """Reject JavaScript-style non-finite constants accepted by Python's decoder."""
     raise NonFiniteJsonNumberError(value)
+
+
+def json_container_children(container: ObjectContainer, source: str) -> ObjectList:
+    """Return validated child values from one JSON container."""
+    if isinstance(container, dict):
+        for key in container:
+            if not isinstance(key, str):
+                raise JsonStructureError(source)
+        return list(container.values())
+    return container
 
 
 def validate_json_tree(value: object, source: str) -> None:
@@ -598,7 +615,7 @@ def validate_json_tree(value: object, source: str) -> None:
         if not isinstance(item, (dict, list)):
             continue
 
-        container = cast("object", item)
+        container = cast("ObjectContainer", item)
         depth = parent_depth + 1
         if depth > MAX_JSON_NESTING_DEPTH:
             raise JsonNestingError(source)
@@ -607,13 +624,7 @@ def validate_json_tree(value: object, source: str) -> None:
             raise JsonStructureError(source)
         active_containers.add(identity)
         stack.append((container, depth, True))
-        if isinstance(item, dict):
-            for key, child in cast("dict[object, object]", item).items():
-                if not isinstance(key, str):
-                    raise JsonStructureError(source)
-                stack.append((child, depth, False))
-        else:
-            stack.extend((child, depth, False) for child in cast("list[object]", item))
+        stack.extend((child, depth, False) for child in json_container_children(container, source))
 
 
 def require_finite_json(value: JsonValue, source: str) -> None:
@@ -656,7 +667,7 @@ def strict_json_dumps(
         raise CodacyCliError(
             f"Unable to serialize {source}: JSON exceeds the {MAX_JSON_NESTING_DEPTH}-level nesting safety limit."
         ) from exception
-    except (JsonStructureError, TypeError, ValueError, OverflowError, RecursionError) as exception:
+    except (TypeError, ValueError, OverflowError, RecursionError) as exception:
         raise CodacyCliError(f"Unable to serialize {source} as strict JSON.") from exception
 
 
@@ -706,6 +717,36 @@ def format_url_authority(hostname: str, port: int | None, *, redact_userinfo: bo
     return f"{userinfo}{formatted_hostname}{formatted_port}"
 
 
+def redacted_url_authority(parsed: parse.SplitResult, token: str | None) -> str | None:
+    """Return a safe authority, or ``None`` when the original authority is malformed."""
+    if not parsed.netloc:
+        return ""
+    authority = authority_parts(parsed)
+    if authority is None:
+        return None
+    hostname, port = authority
+    hostname_contains_token, hostname_stable = text_contains_active_token(hostname, token)
+    safe_hostname = "redacted.invalid" if hostname_contains_token or not hostname_stable else hostname
+    return format_url_authority(
+        safe_hostname,
+        port,
+        redact_userinfo=parsed.username is not None or parsed.password is not None,
+    )
+
+
+def redacted_query_pair(name: str, value: str, token: str | None, *, depth: int) -> tuple[str, str]:
+    """Redact one URL query pair, including nested URL values."""
+    safe_name = redact_active_token_text(name, token)
+    contains_token, stable = text_contains_active_token(value, token)
+    if is_sensitive_name(name) or contains_token or not stable:
+        safe_value = safe_redaction_placeholder(token)
+    elif is_url_string(value):
+        safe_value = redact_url(value, token, _depth=depth + 1)
+    else:
+        safe_value = redact_active_token_text(value, token)
+    return safe_name, safe_value
+
+
 def redact_url(value: str, token: str | None, *, _depth: int = 0) -> str:
     """Redact active and query-key-implied credentials from a URL string."""
     if _depth >= MAX_JSON_NESTING_DEPTH:
@@ -715,32 +756,14 @@ def redact_url(value: str, token: str | None, *, _depth: int = 0) -> str:
     except ValueError:
         return fail_safe_redacted_text(value, token)
 
+    netloc = redacted_url_authority(parsed, token)
+    if netloc is None:
+        return fail_safe_redacted_text(value, token)
     path = redact_active_token_text(parsed.path, token)
-    netloc = ""
-    if parsed.netloc:
-        authority = authority_parts(parsed)
-        if authority is None:
-            return fail_safe_redacted_text(value, token)
-        hostname, port = authority
-        hostname_contains_token, hostname_stable = text_contains_active_token(hostname, token)
-        safe_hostname = "redacted.invalid" if hostname_contains_token or not hostname_stable else hostname
-        netloc = format_url_authority(
-            safe_hostname,
-            port,
-            redact_userinfo=parsed.username is not None or parsed.password is not None,
-        )
-
-    redacted_query: list[tuple[str, str]] = []
-    for name, item in parse.parse_qsl(parsed.query, keep_blank_values=True):
-        safe_name = redact_active_token_text(name, token)
-        contains_token, stable = text_contains_active_token(item, token)
-        if is_sensitive_name(name) or contains_token or not stable:
-            safe_item = safe_redaction_placeholder(token)
-        elif is_url_string(item):
-            safe_item = redact_url(item, token, _depth=_depth + 1)
-        else:
-            safe_item = redact_active_token_text(item, token)
-        redacted_query.append((safe_name, safe_item))
+    redacted_query = [
+        redacted_query_pair(name, item, token, depth=_depth)
+        for name, item in parse.parse_qsl(parsed.query, keep_blank_values=True)
+    ]
 
     fragment = parsed.fragment
     if is_sensitive_name(fragment) or text_contains_active_token(fragment, token)[0]:
@@ -865,9 +888,9 @@ def same_origin_and_base_path(base_url: str, candidate_url: str) -> bool:
 
 def validate_endpoint_url(endpoint_url: str) -> None:
     """Reject URL components that can leak credentials or escape the API path."""
-    parsed = split_url(endpoint_url, "Codacy endpoint")
+    parsed = split_url(endpoint_url, CODACY_ENDPOINT_LABEL)
     if parsed.scheme or parsed.netloc:
-        _ = require_url_authority(parsed, "Codacy endpoint")
+        _ = require_url_authority(parsed, CODACY_ENDPOINT_LABEL)
     if parsed.username is not None or parsed.password is not None:
         raise CodacyCliError("Codacy endpoint must not contain URL credentials.")
     if parsed.fragment:
@@ -882,7 +905,7 @@ def build_url(base_url: str, endpoint: str, query: dict[str, str]) -> str:
     """Build an origin-locked request URL."""
     base_url = sanitize_base_url(base_url)
     validate_endpoint_url(endpoint)
-    parsed_endpoint = split_url(endpoint, "Codacy endpoint")
+    parsed_endpoint = split_url(endpoint, CODACY_ENDPOINT_LABEL)
     if parsed_endpoint.scheme:
         if not same_origin_and_base_path(base_url, endpoint):
             raise CodacyCliError("Absolute endpoint must match the configured HTTPS origin and API base path.")
@@ -892,7 +915,7 @@ def build_url(base_url: str, endpoint: str, query: dict[str, str]) -> str:
             raise CodacyCliError("Relative endpoint must start with '/'.")
         base_endpoint = f"{base_url}{endpoint}"
 
-    parsed = split_url(base_endpoint, "Codacy endpoint")
+    parsed = split_url(base_endpoint, CODACY_ENDPOINT_LABEL)
     combined_query = dict(parse.parse_qsl(parsed.query, keep_blank_values=True))
     combined_query.update(query)
     built_url = parse.urlunsplit(
@@ -943,6 +966,26 @@ def assign_json_child(parent: JsonContainer, key: str | int, value: JsonValue) -
     raise CodacyCliError("Unable to redact an invalid JSON container.")
 
 
+def schedule_redacted_object(
+    value: dict[str, JsonValue],
+    parent: JsonContainer,
+    key: str | int,
+    token: str | None,
+) -> list[RedactionTask]:
+    """Attach one redacted object and return its nonsensitive child tasks."""
+    redacted_object: dict[str, JsonValue] = {}
+    assign_json_child(parent, key, redacted_object)
+    pending: list[RedactionTask] = []
+    for item_key, child in value.items():
+        safe_key = redact_output_string(item_key, token)
+        if is_sensitive_name(item_key):
+            redacted_object[safe_key] = safe_redaction_placeholder(token)
+        else:
+            redacted_object[safe_key] = None
+            pending.append((child, redacted_object, safe_key))
+    return pending
+
+
 def redact_json(value: JsonValue, token: str | None = None) -> JsonValue:
     """Iteratively redact a finite, depth-bounded JSON tree."""
     try:
@@ -957,21 +1000,11 @@ def redact_json(value: JsonValue, token: str | None = None) -> JsonValue:
         raise CodacyCliError("JSON redaction input contains a non-finite number.") from exception
 
     root: list[JsonValue] = [None]
-    tasks: list[tuple[JsonValue, JsonContainer, str | int]] = [(value, root, 0)]
+    tasks: list[RedactionTask] = [(value, root, 0)]
     while tasks:
         item, parent, key = tasks.pop()
         if isinstance(item, dict):
-            redacted_object: dict[str, JsonValue] = {}
-            assign_json_child(parent, key, redacted_object)
-            pending: list[tuple[JsonValue, JsonContainer, str | int]] = []
-            for item_key, child in item.items():
-                safe_key = redact_output_string(item_key, token)
-                if is_sensitive_name(item_key):
-                    redacted_object[safe_key] = safe_redaction_placeholder(token)
-                else:
-                    redacted_object[safe_key] = None
-                    pending.append((child, redacted_object, safe_key))
-            tasks.extend(reversed(pending))
+            tasks.extend(reversed(schedule_redacted_object(item, parent, key, token)))
         elif isinstance(item, list):
             redacted_list: list[JsonValue] = [None] * len(item)
             assign_json_child(parent, key, redacted_list)
@@ -1232,6 +1265,51 @@ def open_api_result(
             raise PostSendResponseError(exception) from exception
 
 
+def prepare_api_request(context: CodacyContext, plan: RequestPlan) -> tuple[dict[str, str], bytes | None]:
+    """Build authenticated headers and a strict optional request body."""
+    headers = {"Accept": JSON_MEDIA_TYPE, "User-Agent": "codacy-management-skill/1"}
+    if context.token is not None:
+        headers["api-token"] = context.token
+    if plan.body is None:
+        return headers, None
+    headers["Content-Type"] = JSON_MEDIA_TYPE
+    return headers, strict_json_dumps(plan.body, "Codacy request body").encode("utf-8")
+
+
+def retry_http_error(
+    exception: error.HTTPError,
+    attempt: int,
+    retries: int,
+    retry_base_delay: float,
+) -> bool:
+    """Sleep before a permitted HTTP retry and report whether to replay."""
+    if exception.code not in RETRYABLE_STATUS_CODES or attempt >= retries:
+        return False
+    time.sleep(retry_delay(exception, attempt, retry_base_delay))
+    return True
+
+
+def retry_post_send_error(
+    exception: PostSendResponseError,
+    attempt: int,
+    retries: int,
+    retry_base_delay: float,
+) -> bool:
+    """Replay only non-CLI response-processing failures for retry-safe requests."""
+    if isinstance(exception.cause, CodacyCliError) or attempt >= retries:
+        return False
+    time.sleep(backoff_delay(attempt, retry_base_delay))
+    return True
+
+
+def retry_transport_error(attempt: int, retries: int, retry_base_delay: float) -> bool:
+    """Sleep before a permitted transport retry and report whether to replay."""
+    if attempt >= retries:
+        return False
+    time.sleep(backoff_delay(attempt, retry_base_delay))
+    return True
+
+
 def send_request(
     context: CodacyContext,
     plan: RequestPlan,
@@ -1243,14 +1321,7 @@ def send_request(
     url = build_url(context.base_url, plan.endpoint, query)
     _ = validate_plan_credential_boundaries(context, plan, url)
     validate_request_runtime(runtime)
-    headers = {"Accept": JSON_MEDIA_TYPE, "User-Agent": "codacy-management-skill/1"}
-    if context.token is not None:
-        headers["api-token"] = context.token
-    body_bytes = None
-    if plan.body is not None:
-        headers["Content-Type"] = JSON_MEDIA_TYPE
-        body_bytes = strict_json_dumps(plan.body, "Codacy request body").encode("utf-8")
-
+    headers, body_bytes = prepare_api_request(context, plan)
     retries = runtime.retries if retries_are_safe(plan) else 0
     for attempt in range(retries + 1):
         api_request = request.Request(  # noqa: S310  # build_url enforces the configured HTTPS origin and base.
@@ -1270,15 +1341,13 @@ def send_request(
             )
         except error.HTTPError as exception:
             try:
-                if exception.code in RETRYABLE_STATUS_CODES and attempt < retries:
-                    time.sleep(retry_delay(exception, attempt, runtime.retry_base_delay))
+                if retry_http_error(exception, attempt, retries, runtime.retry_base_delay):
                     continue
                 raise_api_http_error(context, plan, exception)
             finally:
                 exception.close()
         except PostSendResponseError as exception:
-            if not isinstance(exception.cause, CodacyCliError) and attempt < retries:
-                time.sleep(backoff_delay(attempt, runtime.retry_base_delay))
+            if retry_post_send_error(exception, attempt, retries, runtime.retry_base_delay):
                 continue
             raise_post_send_failure(
                 plan,
@@ -1286,8 +1355,7 @@ def send_request(
                 "Unable to read or process the Codacy API response.",
             )
         except (error.URLError, TimeoutError) as exception:
-            if attempt < retries:
-                time.sleep(backoff_delay(attempt, runtime.retry_base_delay))
+            if retry_transport_error(attempt, retries, runtime.retry_base_delay):
                 continue
             reason = exception.reason if isinstance(exception, error.URLError) else exception
             guidance = indeterminate_write_guidance(plan)
@@ -1729,7 +1797,7 @@ def active_error_tokens(arguments: argparse.Namespace) -> list[str]:
     """Resolve configured tokens defensively for the final stderr sanitization boundary."""
     configured = cast("object", vars(arguments).get("token_envs", []))
     names = (
-        [name for name in cast("list[object]", configured) if isinstance(name, str)]
+        [name for name in cast("ObjectList", configured) if isinstance(name, str)]
         if isinstance(configured, list)
         else []
     )

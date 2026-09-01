@@ -134,6 +134,8 @@ DOWNLOAD_URL_KEYS = frozenset(
 GENERIC_URL_KEYS = frozenset({"href", "link", "uri", "url"})
 COMPLETED_EXPORT_STATES = frozenset({"complete", "completed", "finished", "ready", "succeeded", "success"})
 REDACTED_VALUE = "<redacted>"
+BASE_URL_LABEL = "WakaTime API base URL"
+ENDPOINT_URL_LABEL = "Endpoint URL"
 
 
 class WakaTimeCliError(RuntimeError):
@@ -239,10 +241,10 @@ def url_authority(
 def sanitize_base_url(value: str) -> str:
     """Require and normalize WakaTime's exact official API v1 base URL."""
     base_url = value.strip().rstrip("/")
-    parsed = split_url_safely(base_url, "WakaTime API base URL")
+    parsed = split_url_safely(base_url, BASE_URL_LABEL)
     if parsed.scheme.lower() != "https" or not parsed.netloc:
         raise WakaTimeCliError("WakaTime API base URL must be an absolute HTTPS URL.")
-    username, password, hostname, port = url_authority(parsed, "WakaTime API base URL")
+    username, password, hostname, port = url_authority(parsed, BASE_URL_LABEL)
     if username is not None or password is not None:
         raise WakaTimeCliError("WakaTime API base URL must not contain credentials.")
     if "?" in base_url or "#" in base_url:
@@ -489,7 +491,7 @@ def decode_path_strict(path: str, label: str) -> str:
 
 def validated_endpoint_url(base_url: str, endpoint: str) -> str:
     """Resolve a relative endpoint and lock it to the configured API base."""
-    parsed_input = split_url_safely(endpoint, "Endpoint URL")
+    parsed_input = split_url_safely(endpoint, ENDPOINT_URL_LABEL)
     if "?" in endpoint or "#" in endpoint:
         raise WakaTimeCliError("Endpoint must not contain query or fragment; use --query.")
     _ = decode_path_strict(parsed_input.path, "Endpoint path")
@@ -499,12 +501,12 @@ def validated_endpoint_url(base_url: str, endpoint: str) -> str:
         candidate = endpoint
     else:
         raise WakaTimeCliError("Relative endpoint must start with /.")
-    base = split_url_safely(base_url, "WakaTime API base URL")
-    parsed = split_url_safely(candidate, "Endpoint URL")
+    base = split_url_safely(base_url, BASE_URL_LABEL)
+    parsed = split_url_safely(candidate, ENDPOINT_URL_LABEL)
     if parsed.scheme.lower() != "https" or not parsed.netloc:
         raise WakaTimeCliError("Endpoint must resolve to an absolute HTTPS URL.")
-    base_username, base_password, _base_hostname, _base_port = url_authority(base, "WakaTime API base URL")
-    username, password, _hostname, _port = url_authority(parsed, "Endpoint URL")
+    base_username, base_password, _base_hostname, _base_port = url_authority(base, BASE_URL_LABEL)
+    username, password, _hostname, _port = url_authority(parsed, ENDPOINT_URL_LABEL)
     if base_username is not None or base_password is not None:
         raise WakaTimeCliError("WakaTime API base URL must not contain credentials.")
     if username is not None or password is not None:
@@ -567,22 +569,28 @@ def mapping_has_completed_state(value: dict[str, JsonValue]) -> bool:
     return False
 
 
+def redact_mapping(value: dict[str, JsonValue], secret: str | None) -> dict[str, JsonValue]:
+    """Redact one response mapping and recurse into its safe children."""
+    completed = mapping_has_completed_state(value)
+    result: dict[str, JsonValue] = {}
+    for index, (key, item) in enumerate(value.items(), start=1):
+        safe_key = f"redacted-response-key-{index}" if contains_secret(key, secret) else key
+        normalized = normalized_key(key)
+        if (
+            is_sensitive_query_name(key)
+            or normalized in DOWNLOAD_URL_KEYS
+            or (completed and normalized in GENERIC_URL_KEYS and isinstance(item, str))
+        ):
+            result[safe_key] = REDACTED_VALUE
+        else:
+            result[safe_key] = redact_json(item, secret)
+    return result
+
+
 def redact_json(value: JsonValue, secret: str | None) -> JsonValue:
     """Redact sensitive keys, export URLs, and active credential occurrences."""
     if isinstance(value, dict):
-        completed = mapping_has_completed_state(value)
-        result: dict[str, JsonValue] = {}
-        for index, (key, item) in enumerate(value.items(), start=1):
-            safe_key = f"redacted-response-key-{index}" if contains_secret(key, secret) else key
-            if (
-                is_sensitive_query_name(key)
-                or normalized_key(key) in DOWNLOAD_URL_KEYS
-                or (completed and normalized_key(key) in GENERIC_URL_KEYS and isinstance(item, str))
-            ):
-                result[safe_key] = REDACTED_VALUE
-            else:
-                result[safe_key] = redact_json(item, secret)
-        return result
+        return redact_mapping(value, secret)
     if isinstance(value, list):
         return [redact_json(item, secret) for item in value]
     if isinstance(value, str):
@@ -766,12 +774,11 @@ def error_response_details(http_error: error.HTTPError, secret: str | None) -> t
         return "malformed, undecodable, or non-finite error response body omitted", False
 
 
-def send_request(context: WakaTimeContext, plan: RequestPlan, arguments: argparse.Namespace) -> ApiResult:
-    """Send one WakaTime request without following redirects."""
+def prepare_transport(context: WakaTimeContext, plan: RequestPlan) -> tuple[str, dict[str, str], bytes | None]:
+    """Build one origin-locked URL, header set, and strict optional body."""
     canonical_base = sanitize_base_url(context.base_url)
     validated_url = validated_endpoint_url(canonical_base, plan.url)
     validate_query_credentials(plan.query, context.authentication)
-    timeout, configured_retries = validate_runtime_controls(float(arguments.timeout), int(arguments.retries))
     url = encode_url(validated_url, plan.query)
     headers = {"Accept": "application/json", "User-Agent": "codex-wakatime-management/1"}
     authorization = authentication_header(context.authentication)
@@ -788,6 +795,72 @@ def send_request(context: WakaTimeContext, plan: RequestPlan, arguments: argpars
     )
     if body is not None:
         headers["Content-Type"] = "application/json"
+    return url, headers, body
+
+
+def handle_wakatime_http_error(
+    exception: error.HTTPError,
+    secret: str | None,
+    plan: RequestPlan,
+    attempt: int,
+    retries: int,
+) -> None:
+    """Delay one retryable read or raise a bounded terminal HTTP error."""
+    try:
+        if exception.code in RETRYABLE_STATUS_CODES and attempt < retries:
+            time.sleep(retry_delay(exception, attempt))
+            return
+        details, response_read_failed = error_response_details(exception, secret)
+        guidance = (
+            indeterminate_write_guidance(plan)
+            if exception.code in RETRYABLE_STATUS_CODES or response_read_failed
+            else ""
+        )
+        separator = " " if guidance else ""
+        raise WakaTimeCliError(
+            f"WakaTime API returned HTTP {exception.code}: {details}{separator}{guidance}"
+        ) from exception
+    finally:
+        exception.close()
+
+
+def handle_response_read_error(
+    exception: ResponseReadError,
+    plan: RequestPlan,
+    attempt: int,
+    retries: int,
+) -> None:
+    """Delay one retryable response read or raise with write guidance."""
+    if attempt < retries:
+        time.sleep(capped_exponential_delay(attempt, MAX_TRANSPORT_RETRY_DELAY))
+        return
+    guidance = indeterminate_write_guidance(plan)
+    separator = " " if guidance else ""
+    raise WakaTimeCliError(f"{exception}{separator}{guidance}") from exception
+
+
+def handle_wakatime_transport_error(
+    exception: error.URLError | TimeoutError,
+    secret: str | None,
+    plan: RequestPlan,
+    attempt: int,
+    retries: int,
+) -> None:
+    """Delay one retryable transport error or raise its redacted final form."""
+    if attempt < retries:
+        time.sleep(capped_exponential_delay(attempt, MAX_TRANSPORT_RETRY_DELAY))
+        return
+    reason = exception.reason if isinstance(exception, error.URLError) else exception
+    safe_reason = redact_text(str(reason), secret)[:MAX_RESPONSE_TEXT]
+    guidance = indeterminate_write_guidance(plan)
+    separator = " " if guidance else ""
+    raise WakaTimeCliError(f"WakaTime API request failed: {safe_reason}.{separator}{guidance}") from exception
+
+
+def send_request(context: WakaTimeContext, plan: RequestPlan, arguments: argparse.Namespace) -> ApiResult:
+    """Send one WakaTime request without following redirects."""
+    url, headers, body = prepare_transport(context, plan)
+    timeout, configured_retries = validate_runtime_controls(float(arguments.timeout), int(arguments.retries))
     opener = request.build_opener(NoRedirectHandler())
     retries = configured_retries if plan.method == "GET" else 0
     for attempt in range(retries + 1):
@@ -811,38 +884,14 @@ def send_request(context: WakaTimeContext, plan: RequestPlan, arguments: argpars
                     url=url,
                 )
         except error.HTTPError as exception:
-            try:
-                if exception.code in RETRYABLE_STATUS_CODES and attempt < retries:
-                    time.sleep(retry_delay(exception, attempt))
-                    continue
-                details, response_read_failed = error_response_details(exception, context.authentication.secret)
-                guidance = (
-                    indeterminate_write_guidance(plan)
-                    if exception.code in RETRYABLE_STATUS_CODES or response_read_failed
-                    else ""
-                )
-                separator = " " if guidance else ""
-                raise WakaTimeCliError(
-                    f"WakaTime API returned HTTP {exception.code}: {details}{separator}{guidance}"
-                ) from exception
-            finally:
-                exception.close()
+            handle_wakatime_http_error(exception, context.authentication.secret, plan, attempt, retries)
+            continue
         except ResponseReadError as exception:
-            if attempt < retries:
-                time.sleep(capped_exponential_delay(attempt, MAX_TRANSPORT_RETRY_DELAY))
-                continue
-            guidance = indeterminate_write_guidance(plan)
-            separator = " " if guidance else ""
-            raise WakaTimeCliError(f"{exception}{separator}{guidance}") from exception
+            handle_response_read_error(exception, plan, attempt, retries)
+            continue
         except (error.URLError, TimeoutError) as exception:
-            if attempt < retries:
-                time.sleep(capped_exponential_delay(attempt, MAX_TRANSPORT_RETRY_DELAY))
-                continue
-            reason = exception.reason if isinstance(exception, error.URLError) else exception
-            safe_reason = redact_text(str(reason), context.authentication.secret)[:MAX_RESPONSE_TEXT]
-            guidance = indeterminate_write_guidance(plan)
-            separator = " " if guidance else ""
-            raise WakaTimeCliError(f"WakaTime API request failed: {safe_reason}.{separator}{guidance}") from exception
+            handle_wakatime_transport_error(exception, context.authentication.secret, plan, attempt, retries)
+            continue
     raise WakaTimeCliError("WakaTime API retry loop ended unexpectedly.")
 
 

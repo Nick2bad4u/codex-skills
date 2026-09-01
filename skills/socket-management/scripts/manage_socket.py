@@ -14,7 +14,6 @@ import shutil
 import subprocess
 import sys
 import time
-from binascii import Error as BinasciiError
 from dataclasses import asdict, dataclass
 from http.client import HTTPException
 from pathlib import Path
@@ -52,6 +51,7 @@ CONTROL_C1_LIMIT = 160
 QUOTED_CREDENTIAL_MIN_LENGTH = 2
 MIN_UNQUOTED_TOKEN_CREDENTIAL_LENGTH = 16
 JSON_MEDIA_TYPE = "application/json"
+REDACTED_TEXT = "<redacted>"
 HTTP_TOO_MANY_REQUESTS = 429
 HTTP_REQUEST_TIMEOUT = 408
 HTTP_INTERNAL_SERVER_ERROR = 500
@@ -72,8 +72,8 @@ GET_RETRYABLE_STATUS_CODES = frozenset(
 )
 WRITE_INDETERMINATE_STATUS_CODES = frozenset({HTTP_REQUEST_TIMEOUT, HTTP_TOO_MANY_REQUESTS, *range(500, 600)})
 PATH_PARAMETER = re.compile(r"\{([^{}]+)\}")
-IDENTIFIER_ACRONYM_BOUNDARY = re.compile(r"([A-Z]+)([A-Z][a-z])")
-IDENTIFIER_ACRONYM_PLURAL = re.compile(r"([A-Z]{2,})s\b")
+IDENTIFIER_ACRONYM_BOUNDARY = re.compile(r"([A-Z]++)([A-Z][a-z])")
+IDENTIFIER_ACRONYM_PLURAL = re.compile(r"([A-Z]{2,}+)s\b")
 IDENTIFIER_CASE_BOUNDARY = re.compile(r"([a-z0-9])([A-Z])")
 IDENTIFIER_SEPARATOR = re.compile(r"[^A-Za-z0-9]+")
 PERCENT_ESCAPE = re.compile(r"%[0-9A-Fa-f]{2}")
@@ -87,18 +87,15 @@ SCHEME_CREDENTIAL = re.compile(
     re.IGNORECASE,
 )
 URL_USERINFO = re.compile(r"\b([a-z][a-z0-9+.-]*://)([^/\s?#@]+)@", re.IGNORECASE)
-SENSITIVE_ASSIGNMENT = re.compile(
-    r"""
-    (?P<prefix>^|[\s{[(,;?&])
-    (?P<key_quote>["']?)
-    (?P<name>[A-Za-z0-9_.%~-]+)
-    (?P=key_quote)
-    (?P<before>\s*)
-    (?P<separator>=|:(?!//))
-    (?P<after>\s*)
-    (?P<value>"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|[^\s,;}&\]]*)
-    """,
-    re.IGNORECASE | re.MULTILINE | re.VERBOSE,
+ASSIGNMENT_KEY_PATTERN = r"(?P<key_quote>[\"']?)(?P<name>[a-z0-9_.%~-]+)(?P=key_quote)"
+ASSIGNMENT_SEPARATOR_PATTERN = r"(?P<before>\s*)(?P<separator>=|:(?!//))(?P<after>\s*)"
+ASSIGNMENT_PREFIX_PATTERN = r"(?P<prefix>^|[\s{[(,;?&])"
+SENSITIVE_ASSIGNMENTS = tuple(
+    re.compile(
+        ASSIGNMENT_PREFIX_PATTERN + ASSIGNMENT_KEY_PATTERN + ASSIGNMENT_SEPARATOR_PATTERN + value_pattern,
+        re.IGNORECASE | re.MULTILINE,
+    )
+    for value_pattern in (r'"(?:\\.|[^"\\])*"', r"'(?:\\.|[^'\\])*'", r"[^\s,;}&\]]*")
 )
 SENSITIVE_TERMINAL_TOKENS = frozenset(
     {"authorization", "cookie", "credential", "password", "secret", "session", "token", "webhook"}
@@ -267,7 +264,7 @@ def strict_json_loads(value: str, *, source: str) -> JsonValue:
                 parse_float=parse_finite_json_float,
             ),
         )
-    except (json.JSONDecodeError, ValueError) as exception:
+    except ValueError as exception:
         raise SocketCliError(f"Expected JSON with only finite numbers from {source}.") from exception
 
 
@@ -464,7 +461,7 @@ def declared_content_length(headers: Message[str, str]) -> int | None:
     if raw_value is None:
         return None
     value = str(raw_value).strip()
-    if re.fullmatch(r"[0-9]+", value, flags=re.ASCII) is None:
+    if re.fullmatch(r"\d+", value, flags=re.ASCII) is None:
         return None
     try:
         return int(value)
@@ -498,25 +495,26 @@ def decode_json(data: bytes, *, source: str) -> JsonValue:
     return strict_json_loads(text, source=source)
 
 
-def load_openapi(arguments: argparse.Namespace, context: SocketContext) -> tuple[dict[str, JsonValue], str]:
-    """Load a local or live Socket OpenAPI JSON document."""
-    spec_file = cast("Path | None", arguments.spec_file)
-    if spec_file is not None:
-        try:
-            with spec_file.open("rb") as stream:
-                data = stream.read(MAX_LOCAL_SPEC_BYTES + 1)
-        except OSError as exception:
-            raise SocketCliError(f"Could not parse OpenAPI JSON file: {spec_file}") from exception
-        if len(data) > MAX_LOCAL_SPEC_BYTES:
-            raise SocketCliError(f"Local OpenAPI specification exceeds the {MAX_LOCAL_SPEC_BYTES}-byte safety limit.")
-        try:
-            payload = decode_json(data, source=f"OpenAPI JSON file {spec_file}")
-        except SocketCliError as exception:
-            raise SocketCliError(f"Could not parse OpenAPI JSON file: {spec_file}") from exception
-        if not isinstance(payload, dict):
-            raise SocketCliError("OpenAPI document root must be an object.")
-        return payload, str(spec_file)
+def load_local_openapi(spec_file: Path) -> dict[str, JsonValue]:
+    """Load one bounded local Socket OpenAPI document."""
+    try:
+        with spec_file.open("rb") as stream:
+            data = stream.read(MAX_LOCAL_SPEC_BYTES + 1)
+    except OSError as exception:
+        raise SocketCliError(f"Could not parse OpenAPI JSON file: {spec_file}") from exception
+    if len(data) > MAX_LOCAL_SPEC_BYTES:
+        raise SocketCliError(f"Local OpenAPI specification exceeds the {MAX_LOCAL_SPEC_BYTES}-byte safety limit.")
+    try:
+        payload = decode_json(data, source=f"OpenAPI JSON file {spec_file}")
+    except SocketCliError as exception:
+        raise SocketCliError(f"Could not parse OpenAPI JSON file: {spec_file}") from exception
+    if not isinstance(payload, dict):
+        raise SocketCliError("OpenAPI document root must be an object.")
+    return payload
 
+
+def load_remote_openapi(arguments: argparse.Namespace, context: SocketContext) -> tuple[dict[str, JsonValue], str]:
+    """Load one bounded official Socket OpenAPI document."""
     spec_url = validate_spec_url(optional_text(arguments.spec_url) or DEFAULT_SPEC_URL, context)
     opener = request.build_opener(NoRedirectHandler())
     try:
@@ -568,6 +566,14 @@ def load_openapi(arguments: argparse.Namespace, context: SocketContext) -> tuple
     if not isinstance(payload, dict):
         raise SocketCliError("OpenAPI document root must be an object.")
     return payload, spec_url
+
+
+def load_openapi(arguments: argparse.Namespace, context: SocketContext) -> tuple[dict[str, JsonValue], str]:
+    """Load a local or live Socket OpenAPI JSON document."""
+    spec_file = cast("Path | None", arguments.spec_file)
+    if spec_file is not None:
+        return load_local_openapi(spec_file), str(spec_file)
+    return load_remote_openapi(arguments, context)
 
 
 def openapi_operation(path: str, method: str, value: JsonValue) -> OpenApiOperation | None:
@@ -776,9 +782,13 @@ def active_credential_variants(token: str | None) -> tuple[str, ...]:
         return ()
     credentials = {token.strip()}
     credentials.discard("")
-    scheme_match = re.fullmatch(r"(?:bearer|basic|token)\s+(.+)", token.strip(), flags=re.IGNORECASE)
-    if scheme_match is not None:
-        credentials.add(scheme_match.group(1))
+    scheme_parts = token.strip().split(maxsplit=1)
+    if len(scheme_parts) == QUOTED_CREDENTIAL_MIN_LENGTH and scheme_parts[0].casefold() in {
+        "bearer",
+        "basic",
+        "token",
+    }:
+        credentials.add(scheme_parts[1])
 
     variants = set(credentials)
     for credential in credentials:
@@ -811,7 +821,7 @@ def valid_basic_credential(value: str) -> bool:
     credential = value.rstrip(".!?)]}")
     try:
         decoded = base64.b64decode(credential, validate=True)
-    except BinasciiError, ValueError:
+    except ValueError:
         return False
     return b":" in decoded
 
@@ -820,7 +830,7 @@ def redact_untrusted_scalar(value: str, token: str | None) -> str:
     """Redact credentials in one scalar while preserving explanatory prose."""
     text = value
     for variant in active_credential_variants(token):
-        text = encoded_credential_pattern(variant).sub("<redacted>", text)
+        text = encoded_credential_pattern(variant).sub(REDACTED_TEXT, text)
 
     text = URL_USERINFO.sub(r"\1<redacted>@", text)
     text = AUTHORIZATION_ASSIGNMENT.sub("Authorization: <redacted>", text)
@@ -838,11 +848,12 @@ def redact_untrusted_scalar(value: str, token: str | None) -> str:
                 match.group("before"),
                 match.group("separator"),
                 match.group("after"),
-                "<redacted>",
+                REDACTED_TEXT,
             )
         )
 
-    text = SENSITIVE_ASSIGNMENT.sub(redact_assignment, text)
+    for assignment_pattern in SENSITIVE_ASSIGNMENTS:
+        text = assignment_pattern.sub(redact_assignment, text)
 
     def redact_scheme(match: re.Match[str]) -> str:
         scheme = match.group("scheme")
@@ -873,7 +884,9 @@ def safe_untrusted_reason(reason: object, token: str | None) -> str:
 def redact_json(value: JsonValue, token: str | None) -> JsonValue:
     """Recursively redact sensitive fields and credential-bearing scalars."""
     if isinstance(value, dict):
-        return {key: "<redacted>" if is_sensitive_key(key) else redact_json(item, token) for key, item in value.items()}
+        return {
+            key: REDACTED_TEXT if is_sensitive_key(key) else redact_json(item, token) for key, item in value.items()
+        }
     if isinstance(value, list):
         return [redact_json(item, token) for item in value]
     if isinstance(value, str):
@@ -1021,6 +1034,42 @@ def handle_url_error(
     raise SocketCliError(f"Socket API request failed: {reason}") from exception
 
 
+def consume_success_response(
+    response: IO[bytes],
+    headers: Message[str, str],
+    *,
+    status: int,
+    is_read: bool,
+    token: str | None,
+) -> tuple[JsonValue, bytes]:
+    """Read one success response while preserving indeterminate-write guidance."""
+    try:
+        data = read_bounded_response(
+            response,
+            headers,
+            limit=MAX_API_RESPONSE_BYTES,
+            source="Socket API response",
+        )
+        if not is_read:
+            require_write_response_body(data)
+        return response_payload(data, headers.get("Content-Type", ""), token), data
+    except (HTTPException, OSError, SocketCliError) as response_exception:
+        safe_detail = safe_untrusted_reason(response_exception, token)
+        if not is_read:
+            write_result = f"Socket API write returned HTTP {status} after one attempt and was not retried"
+            response_failure = f"Response failure: {safe_detail}"
+            message = (
+                f"{write_result}, but the success response could not be safely processed; "
+                f"the outcome is indeterminate. Verify Socket state before retrying. {response_failure}"
+            )
+            raise SocketCliError(message) from response_exception
+        if isinstance(response_exception, SocketCliError):
+            raise
+        raise SocketCliError(
+            f"Socket API response could not be safely processed: {safe_detail}"
+        ) from response_exception
+
+
 def send_request(
     context: SocketContext, plan: RequestPlan, *, query: dict[str, str], arguments: argparse.Namespace
 ) -> ApiResult:
@@ -1041,31 +1090,13 @@ def send_request(
         try:
             with opener.open(api_request, timeout=timeout) as response:  # URL is origin locked.
                 status = int(response.status)
-                try:
-                    data = read_bounded_response(
-                        response,
-                        response.headers,
-                        limit=MAX_API_RESPONSE_BYTES,
-                        source="Socket API response",
-                    )
-                    if not is_read:
-                        require_write_response_body(data)
-                    payload = response_payload(data, response.headers.get("Content-Type", ""), context.token)
-                except (HTTPException, OSError, SocketCliError) as response_exception:
-                    safe_detail = safe_untrusted_reason(response_exception, context.token)
-                    if not is_read:
-                        write_result = f"Socket API write returned HTTP {status} after one attempt and was not retried"
-                        response_failure = f"Response failure: {safe_detail}"
-                        message = (
-                            f"{write_result}, but the success response could not be safely processed; "
-                            f"the outcome is indeterminate. Verify Socket state before retrying. {response_failure}"
-                        )
-                        raise SocketCliError(message) from response_exception
-                    if isinstance(response_exception, SocketCliError):
-                        raise
-                    raise SocketCliError(
-                        f"Socket API response could not be safely processed: {safe_detail}"
-                    ) from response_exception
+                payload, data = consume_success_response(
+                    response,
+                    response.headers,
+                    status=status,
+                    is_read=is_read,
+                    token=context.token,
+                )
                 return ApiResult(
                     payload=payload,
                     status=status,

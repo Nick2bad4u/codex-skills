@@ -22,7 +22,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Never, cast, override
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Iterable
     from http.client import HTTPMessage, HTTPResponse
     from typing import IO
 
@@ -43,6 +43,7 @@ MAX_JSON_DEPTH = 64
 MAX_OUTPUT_JSON_DEPTH = MAX_JSON_DEPTH + 8
 SENSITIVE_NAME = re.compile(r"(?:api[-_]?key|authorization|cookie|credential|password|secret|token)", re.IGNORECASE)
 REDACTED_VALUE = "<redacted>"
+REQUEST_BODY_LABEL = "request body"
 OWNER_FROM_REMOTE = re.compile(r"github\.com[:/](?P<owner>[^/]+)/(?P<repo>[^/]+?)(?:\.git)?$", re.IGNORECASE)
 CONTEXT_PATH_NAMES = {
     "organization": "org",
@@ -99,6 +100,26 @@ class RequestRuntime:
             raise StepSecurityError(f"--retries must be between 0 and {MAX_RETRIES}")
         if not 1 <= self.max_response_bytes <= MAX_API_RESPONSE_BYTES:
             raise StepSecurityError(f"Response byte limit must be between 1 and {MAX_API_RESPONSE_BYTES}")
+
+
+@dataclass
+class RequestProgress:
+    """Mutable retry and redirect state for one logical request."""
+
+    url: str
+    visited_urls: set[str]
+    attempt: int = 0
+    redirect_count: int = 0
+
+
+@dataclass(frozen=True)
+class PageRequest:
+    """Transport inputs for one paginated request page."""
+
+    method: str
+    url: str
+    headers: dict[str, str]
+    body: bytes | None
 
 
 @dataclass(frozen=True)
@@ -281,34 +302,38 @@ def validate_json_scalar(value: object, *, label: str) -> None:
     raise StepSecurityError(f"{label} contains a value that JSON cannot represent")
 
 
+def validated_json_container_items(value: object, *, label: str) -> Iterable[object] | None:
+    """Return validated container children, or None for a scalar."""
+    mapping = object_mapping(value)
+    if mapping is not None:
+        if any(not isinstance(key, str) for key in mapping):
+            raise StepSecurityError(f"{label} requires string JSON object keys")
+        return mapping.values()
+    return object_list(value)
+
+
 def validate_json_value(value: object, *, label: str, max_depth: int = MAX_JSON_DEPTH) -> None:
     """Validate JSON types, finite numbers, cycles, and nesting iteratively."""
     stack: list[tuple[object, int, bool]] = [(value, 0, False)]
     active_containers: set[int] = set()
     while stack:
         current, parent_depth, exiting = stack.pop()
-        current_mapping = object_mapping(current)
-        current_items = object_list(current)
-        if current_mapping is not None or current_items is not None:
-            identifier = id(current)
-            if exiting:
-                active_containers.remove(identifier)
-                continue
-            current_depth = parent_depth + 1
-            if current_depth > max_depth:
-                raise json_depth_error(label, max_depth)
-            if identifier in active_containers:
-                raise StepSecurityError(f"{label} contains a JSON container cycle")
-            active_containers.add(identifier)
-            stack.append((current, parent_depth, True))
-            if current_mapping is not None:
-                if any(not isinstance(key, str) for key in current_mapping):
-                    raise StepSecurityError(f"{label} requires string JSON object keys")
-                stack.extend((item, current_depth, False) for item in current_mapping.values())
-            elif current_items is not None:
-                stack.extend((item, current_depth, False) for item in current_items)
+        children = validated_json_container_items(current, label=label)
+        if children is None:
+            validate_json_scalar(current, label=label)
             continue
-        validate_json_scalar(current, label=label)
+        identifier = id(current)
+        if exiting:
+            active_containers.remove(identifier)
+            continue
+        current_depth = parent_depth + 1
+        if current_depth > max_depth:
+            raise json_depth_error(label, max_depth)
+        if identifier in active_containers:
+            raise StepSecurityError(f"{label} contains a JSON container cycle")
+        active_containers.add(identifier)
+        stack.append((current, parent_depth, True))
+        stack.extend((item, current_depth, False) for item in children)
 
 
 def decode_json_document(value: str, *, label: str, max_depth: int = MAX_JSON_DEPTH) -> object:
@@ -570,7 +595,7 @@ def body_bytes(arguments: argparse.Namespace) -> bytes | None:
     if inline and body_file:
         raise StepSecurityError("Use either --body or --body-file, not both")
     if body_file:
-        value = load_json_file(body_file, "request body")
+        value = load_json_file(body_file, REQUEST_BODY_LABEL)
     elif inline:
         try:
             value = decode_json_document(cast("str", inline), label="inline JSON body")
@@ -580,7 +605,7 @@ def body_bytes(arguments: argparse.Namespace) -> bytes | None:
         return None
     return safe_json_dumps(
         value,
-        label="request body",
+        label=REQUEST_BODY_LABEL,
         separators=(",", ":"),
     ).encode()
 
@@ -602,6 +627,45 @@ def assign_json_child(
         parent[cast("str", key)] = value
 
 
+def queue_redacted_mapping(
+    mapping: dict[object, object],
+    parent: dict[str, object] | list[object],
+    key: str | int,
+    stack: list[tuple[object, dict[str, object] | list[object], str | int]],
+) -> None:
+    """Assign a redacted mapping shell and queue its non-sensitive children."""
+    redacted_mapping: dict[str, object] = {}
+    assign_json_child(parent, key, redacted_mapping)
+    for raw_key, item in reversed(tuple(mapping.items())):
+        item_key = cast("str", raw_key)
+        if SENSITIVE_NAME.search(item_key):
+            redacted_mapping[item_key] = REDACTED_VALUE
+        else:
+            stack.append((item, redacted_mapping, item_key))
+
+
+def queue_redacted_items(
+    items: list[object],
+    parent: dict[str, object] | list[object],
+    key: str | int,
+    stack: list[tuple[object, dict[str, object] | list[object], str | int]],
+) -> None:
+    """Assign a redacted list shell and queue its children."""
+    redacted_items: list[object] = [None] * len(items)
+    assign_json_child(parent, key, redacted_items)
+    stack.extend((item, redacted_items, index) for index, item in reversed(tuple(enumerate(items))))
+
+
+def redacted_scalar(value: object, sensitive_values: tuple[str, ...]) -> object:
+    """Redact configured values from one validated JSON scalar."""
+    if not isinstance(value, str):
+        return value
+    result = value
+    for sensitive_value in sensitive_values:
+        result = result.replace(sensitive_value, REDACTED_VALUE)
+    return result
+
+
 def redact(value: object, sensitive_values: tuple[str, ...] = ()) -> object:
     """Redact one validated JSON value iteratively."""
     validate_json_value(value, label="JSON value for redaction")
@@ -611,28 +675,13 @@ def redact(value: object, sensitive_values: tuple[str, ...] = ()) -> object:
         current, parent, key = stack.pop()
         mapping = object_mapping(current)
         if mapping is not None:
-            redacted_mapping: dict[str, object] = {}
-            assign_json_child(parent, key, redacted_mapping)
-            for raw_key, item in reversed(tuple(mapping.items())):
-                item_key = cast("str", raw_key)
-                if SENSITIVE_NAME.search(item_key):
-                    redacted_mapping[item_key] = REDACTED_VALUE
-                else:
-                    stack.append((item, redacted_mapping, item_key))
+            queue_redacted_mapping(mapping, parent, key, stack)
             continue
         items = object_list(current)
         if items is not None:
-            redacted_items: list[object] = [None] * len(items)
-            assign_json_child(parent, key, redacted_items)
-            stack.extend((item, redacted_items, index) for index, item in reversed(tuple(enumerate(items))))
+            queue_redacted_items(items, parent, key, stack)
             continue
-        if isinstance(current, str):
-            redacted = current
-            for sensitive_value in sensitive_values:
-                redacted = redacted.replace(sensitive_value, REDACTED_VALUE)
-            assign_json_child(parent, key, redacted)
-        else:
-            assign_json_child(parent, key, current)
+        assign_json_child(parent, key, redacted_scalar(current, sensitive_values))
     return holder[0]
 
 
@@ -813,6 +862,32 @@ def success_result(
     )
 
 
+def handle_request_http_error(
+    method: str,
+    error: urllib.error.HTTPError,
+    runtime: RequestRuntime,
+    progress: RequestProgress,
+    sensitive_values: tuple[str, ...],
+) -> None:
+    """Advance a safe redirect or retry, or raise one terminal HTTP failure."""
+    redirected = redirect_for_method(method, progress.url, error, sensitive_values)
+    if redirected is not None:
+        if redirected in progress.visited_urls:
+            raise StepSecurityError("StepSecurity returned a repeated redirect URL; refusing a redirect cycle")
+        if progress.redirect_count >= MAX_REDIRECTS:
+            raise StepSecurityError(f"StepSecurity redirect limit of {MAX_REDIRECTS} was exceeded")
+        progress.redirect_count += 1
+        progress.visited_urls.add(redirected)
+        progress.url = redirected
+        return
+    delay = retry_delay(method, error, progress.attempt, runtime)
+    if delay is not None:
+        time.sleep(delay)
+        progress.attempt += 1
+        return
+    raise_http_failure(method, error, sensitive_values)
+
+
 def send_result(
     method: str,
     url: str,
@@ -823,14 +898,12 @@ def send_result(
     """Send one request with bounded reads, retries, and redirects."""
     method = method.upper()
     opener = urllib.request.build_opener(NoRedirect())
-    attempt = 0
     current_url = validated_url(url)
-    visited_urls = {current_url}
-    redirect_count = 0
+    progress = RequestProgress(url=current_url, visited_urls={current_url})
     sensitive_values = sensitive_header_values(headers)
     while True:
         request = urllib.request.Request(  # noqa: S310  # validated_url origin-locks current_url.
-            current_url,
+            progress.url,
             data=body,
             headers=headers,
             method=method,
@@ -840,31 +913,14 @@ def send_result(
                 response = opener.open(request, timeout=runtime.timeout)
             except urllib.error.HTTPError as error:
                 try:
-                    redirected = redirect_for_method(method, current_url, error, sensitive_values)
-                    if redirected is not None:
-                        if redirected in visited_urls:
-                            raise StepSecurityError(
-                                "StepSecurity returned a repeated redirect URL; refusing a redirect cycle"
-                            )
-                        if redirect_count >= MAX_REDIRECTS:
-                            raise StepSecurityError(f"StepSecurity redirect limit of {MAX_REDIRECTS} was exceeded")
-                        redirect_count += 1
-                        visited_urls.add(redirected)
-                        current_url = redirected
-                        continue
-                    delay = retry_delay(method, error, attempt, runtime)
-                    if delay is not None:
-                        time.sleep(delay)
-                        attempt += 1
-                        continue
-                    raise_http_failure(method, error, sensitive_values)
+                    handle_request_http_error(method, error, runtime, progress, sensitive_values)
                 finally:
                     error.close()
-            else:
-                try:
-                    return success_result(method, response, runtime, sensitive_values)
-                finally:
-                    response.close()
+                continue
+            try:
+                return success_result(method, response, runtime, sensitive_values)
+            finally:
+                response.close()
         except (OSError, http.client.HTTPException) as error:
             raise_transport_failure(method, error, sensitive_values)
 
@@ -915,7 +971,7 @@ def request_plan(arguments: argparse.Namespace) -> tuple[dict[str, object], byte
     if body is not None:
         headers["Content-Type"] = JSON_MEDIA_TYPE
     plan: dict[str, object] = {
-        "body": redact(decode_json_document(body.decode(), label="request body")) if body is not None else None,
+        "body": redact(decode_json_document(body.decode(), label=REQUEST_BODY_LABEL)) if body is not None else None,
         "customer": context.customer,
         "headers": safe_headers(headers),
         "method": method,
@@ -971,6 +1027,46 @@ def execute_request(arguments: argparse.Namespace) -> None:
     emit(output)
 
 
+def page_runtime(arguments: argparse.Namespace, response_bytes: int) -> RequestRuntime:
+    """Build one page runtime under the cumulative pagination byte budget."""
+    remaining_bytes = MAX_PAGINATED_RESPONSE_BYTES - response_bytes
+    if arguments.paginate and remaining_bytes <= 0:
+        raise StepSecurityError(
+            f"StepSecurity pagination exceeds the {MAX_PAGINATED_RESPONSE_BYTES}-byte cumulative safety limit"
+        )
+    page_limit = min(MAX_API_RESPONSE_BYTES, remaining_bytes) if arguments.paginate else MAX_API_RESPONSE_BYTES
+    return RequestRuntime(
+        max_response_bytes=page_limit,
+        retries=arguments.retries,
+        timeout=arguments.timeout,
+    )
+
+
+def send_page(
+    arguments: argparse.Namespace,
+    page: PageRequest,
+    runtime: RequestRuntime,
+) -> ApiResult:
+    """Send one page and translate a cumulative-limit overflow precisely."""
+    try:
+        return send_result(page.method, page.url, page.headers, page.body, runtime)
+    except StepSecurityError as error:
+        page_overflow = f"StepSecurity API response exceeds the {runtime.max_response_bytes}-byte safety limit"
+        if arguments.paginate and runtime.max_response_bytes < MAX_API_RESPONSE_BYTES and str(error) == page_overflow:
+            raise StepSecurityError(
+                f"StepSecurity pagination exceeds the {MAX_PAGINATED_RESPONSE_BYTES}-byte cumulative safety limit"
+            ) from error
+        raise
+
+
+def page_next_link(payload: object, *, page_count: int) -> str | None:
+    """Extract a page link with explicit incomplete-pagination context."""
+    try:
+        return next_link(payload)
+    except StepSecurityError as error:
+        raise StepSecurityError(f"StepSecurity pagination is incomplete after {page_count} page(s): {error}") from error
+
+
 def execute_pages(
     arguments: argparse.Namespace,
     plan: dict[str, object],
@@ -984,26 +1080,17 @@ def execute_pages(
     pending_link: str | None = None
     response_bytes = 0
     for page_number in range(1, arguments.max_pages + 1):
-        remaining_bytes = MAX_PAGINATED_RESPONSE_BYTES - response_bytes
-        if arguments.paginate and remaining_bytes <= 0:
-            raise StepSecurityError(
-                f"StepSecurity pagination exceeds the {MAX_PAGINATED_RESPONSE_BYTES}-byte cumulative safety limit"
-            )
-        page_limit = min(MAX_API_RESPONSE_BYTES, remaining_bytes) if arguments.paginate else MAX_API_RESPONSE_BYTES
-        runtime = RequestRuntime(
-            max_response_bytes=page_limit,
-            retries=arguments.retries,
-            timeout=arguments.timeout,
+        runtime = page_runtime(arguments, response_bytes)
+        result = send_page(
+            arguments,
+            PageRequest(
+                method=cast("str", plan["method"]),
+                url=url,
+                headers=headers,
+                body=body,
+            ),
+            runtime,
         )
-        try:
-            result = send_result(cast("str", plan["method"]), url, headers, body, runtime)
-        except StepSecurityError as error:
-            page_overflow = f"StepSecurity API response exceeds the {page_limit}-byte safety limit"
-            if arguments.paginate and page_limit < MAX_API_RESPONSE_BYTES and str(error) == page_overflow:
-                raise StepSecurityError(
-                    f"StepSecurity pagination exceeds the {MAX_PAGINATED_RESPONSE_BYTES}-byte cumulative safety limit"
-                ) from error
-            raise
         response_bytes += result.response_bytes
         pages.append(
             {
@@ -1013,12 +1100,7 @@ def execute_pages(
                 "request_id": result.headers.get("X-Request-Id") or result.headers.get("X-Request-ID"),
             }
         )
-        try:
-            candidate = next_link(result.payload)
-        except StepSecurityError as error:
-            raise StepSecurityError(
-                f"StepSecurity pagination is incomplete after {len(pages)} page(s): {error}"
-            ) from error
+        candidate = page_next_link(result.payload, page_count=len(pages))
         if candidate is None:
             pending_link = None
             break
