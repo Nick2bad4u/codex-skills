@@ -5,9 +5,14 @@
 
 ## ✨ What's Changed
 
-- <b>Commit Range: ➡️</b> [`v1.4.1...afe094e`](https://github.com/Nick2bad4u/codex-skills/compare/v1.4.1...afe094e27959be016a1dffff548bd17ef667fd42 "View full commit range on GitHub")
+- <b>Commit Range: ➡️</b> [`v1.4.1...7c94c2e`](https://github.com/Nick2bad4u/codex-skills/compare/v1.4.1...7c94c2e14d2d7eefa994165e97b4db92799a3bb0 "View full commit range on GitHub")
 
 ### 🛠️ Bug Fixes
+
+- [`7c94c2e`](https://github.com/Nick2bad4u/codex-skills/commit/7c94c2e14d2d7eefa994165e97b4db92799a3bb0 "Diff: 1 file, +568 | -417") — _(dependencies)_ Refresh Python artifact hashes&nbsp;<sub><em>(1&nbsp;file,&nbsp;+568,&nbsp;-417)</em></sub>
+  - 🔒️ [fix] Replace stale pre-update hashes retained by the merged Dependabot version bump with current platform-neutral PyPI artifact hashes.
+  - 🧰 [build] Regenerate the existing Python 3.14 lock from the exact-pinned requirements source using uv upgrade resolution.
+  - ✅ [test] Prove hash-locked bootstrap, installed dependency integrity, strict-tool auditing, and the complete Python test gate under the upgraded toolchain.
 
 - [`1f447ce`](https://github.com/Nick2bad4u/codex-skills/commit/1f447ceeb65a268de1d3768acff64c14cc29dbf7 "Diff: 3 files, +412 | -315") — _(sonar)_ Refactor auditor quality findings&nbsp;<sub><em>(3&nbsp;files,&nbsp;+412,&nbsp;-315)</em></sub>
   - ♻️ [refactor] Decompose package-owner, strict-Python, and SchemaStore validation branches into smaller typed helpers.
@@ -27,6 +32,11 @@
   - 📝 [docs] Align skill procedures and API references with the hardened command behavior.
 
 ### 📝 Documentation
+
+- [`18049fb`](https://github.com/Nick2bad4u/codex-skills/commit/18049fbbac4f31072e6c2f4508700fa1ed731b6a "Diff: 1 file, +14 | -5") — _(changelog)_ Sync rebased release history&nbsp;<sub><em>(1&nbsp;file,&nbsp;+14,&nbsp;-5)</em></sub>
+  - 📝 [docs] Regenerate the post-v1.4.1 range after rebasing the Sonar remediation onto the merged Dependabot update.
+  - 🔗 [docs] Replace rewritten local commit links with their final rebased SHAs and retain the complete earlier history.
+  - 📦 [docs] Record the Python development dependency refresh that landed on main during release preparation.
 
 - [`afe094e`](https://github.com/Nick2bad4u/codex-skills/commit/afe094e27959be016a1dffff548bd17ef667fd42 "Diff: 1 file, +35 | -1") — _(changelog)_ Record Sonar remediation&nbsp;<sub><em>(1&nbsp;file,&nbsp;+35,&nbsp;-1)</em></sub>
   - 📝 [docs] Regenerate the complete git-cliff history through the final Sonar source, test, and release-workflow commits.
