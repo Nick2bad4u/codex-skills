@@ -5,11 +5,11 @@
 
 ## ✨ What's Changed
 
-- <b>Commit Range: ➡️</b> [`v1.4.1...e5c6382`](https://github.com/Nick2bad4u/codex-skills/compare/v1.4.1...e5c6382f82967e888ab305dc3df9aee054199e06 "View full commit range on GitHub")
+- <b>Commit Range: ➡️</b> [`v1.4.1...afe094e`](https://github.com/Nick2bad4u/codex-skills/compare/v1.4.1...afe094e27959be016a1dffff548bd17ef667fd42 "View full commit range on GitHub")
 
 ### 🛠️ Bug Fixes
 
-- [`967768a`](https://github.com/Nick2bad4u/codex-skills/commit/967768af583968cdaaefad31e7c7c677b5a7ad38 "Diff: 3 files, +412 | -315") — _(sonar)_ Refactor auditor quality findings&nbsp;<sub><em>(3&nbsp;files,&nbsp;+412,&nbsp;-315)</em></sub>
+- [`1f447ce`](https://github.com/Nick2bad4u/codex-skills/commit/1f447ceeb65a268de1d3768acff64c14cc29dbf7 "Diff: 3 files, +412 | -315") — _(sonar)_ Refactor auditor quality findings&nbsp;<sub><em>(3&nbsp;files,&nbsp;+412,&nbsp;-315)</em></sub>
   - ♻️ [refactor] Decompose package-owner, strict-Python, and SchemaStore validation branches into smaller typed helpers.
   - 🧹 [chore] Replace repeated manifest, lockfile, script, cache, and schema literals with named domain constants.
   - ✅ [fix] Simplify parser and capability decisions without changing the auditors' fail-closed validation contracts.
@@ -28,6 +28,11 @@
 
 ### 📝 Documentation
 
+- [`afe094e`](https://github.com/Nick2bad4u/codex-skills/commit/afe094e27959be016a1dffff548bd17ef667fd42 "Diff: 1 file, +35 | -1") — _(changelog)_ Record Sonar remediation&nbsp;<sub><em>(1&nbsp;file,&nbsp;+35,&nbsp;-1)</em></sub>
+  - 📝 [docs] Regenerate the complete git-cliff history through the final Sonar source, test, and release-workflow commits.
+  - 🎨 [style] Apply the pinned Prettier formatter until the historical generated tables are idempotent.
+  - 🔗 [docs] Preserve commit-range and per-commit links for the full post-v1.4.1 release candidate.
+
 - [`464afa5`](https://github.com/Nick2bad4u/codex-skills/commit/464afa53accab138cc5cccf327c8159022ad3f7c "Diff: 1 file, +761 | -4") — _(changelog)_ Regenerate complete release history&nbsp;<sub><em>(1&nbsp;file,&nbsp;+761,&nbsp;-4)</em></sub>
   - 📝 [docs] Preserve the full git-cliff history and add the complete post-v1.4.1 candidate range for the hardened helpers, auditors, package surface, and release workflow.
 
@@ -38,7 +43,7 @@
 
 ### 🧪 Testing
 
-- [`8523cb6`](https://github.com/Nick2bad4u/codex-skills/commit/8523cb6ae0d39c8a4f8e49c42409b0176fc17b0a "Diff: 7 files, +390 | -232") — _(sonar)_ Isolate exception assertions&nbsp;<sub><em>(7&nbsp;files,&nbsp;+390,&nbsp;-232)</em></sub>
+- [`8085090`](https://github.com/Nick2bad4u/codex-skills/commit/8085090ae34dc6a90bb0c0604b3aa8788b6d575b "Diff: 7 files, +390 | -232") — _(sonar)_ Isolate exception assertions&nbsp;<sub><em>(7&nbsp;files,&nbsp;+390,&nbsp;-232)</em></sub>
   - 🧪 [test] Hoist plans, contexts, payloads, and runtimes out of pytest.raises blocks so each assertion exercises one exception-producing call.
   - ✅ [test] Keep the original error types, match expressions, retry boundaries, and safety scenarios intact across all affected management suites.
   - 🏷️ [test] Add the narrow JSON value annotation required for the non-finite Tag Manager payload.
@@ -66,14 +71,18 @@
   - 🔎 [build] Tighten skill-surface auditing around the intended package contract.
   - 📝 [docs] Synchronize the README with all 29 repository skills.
 
+### 📦 Dependencies
+
+- [`725420e`](https://github.com/Nick2bad4u/codex-skills/commit/725420ee9a33a5df0767cb874db67f0a3f77c61b "Diff: 2 files, +20 | -20") — ⬆️ [build] Update dependabot-all dependencies&nbsp;<sub><em>(2&nbsp;files,&nbsp;+20,&nbsp;-20)</em></sub>
+
 ### 🛡️ Security
 
-- [`e5c6382`](https://github.com/Nick2bad4u/codex-skills/commit/e5c6382f82967e888ab305dc3df9aee054199e06 "Diff: 1 file, +1 | -1") — _(release)_ Run pinned Prettier binary&nbsp;<sub><em>(1&nbsp;file,&nbsp;+1,&nbsp;-1)</em></sub>
+- [`dcd10ed`](https://github.com/Nick2bad4u/codex-skills/commit/dcd10edba628519eab74378fc283d5273f44a152 "Diff: 1 file, +1 | -1") — _(release)_ Run pinned Prettier binary&nbsp;<sub><em>(1&nbsp;file,&nbsp;+1,&nbsp;-1)</em></sub>
   - 🔒️ [security] Invoke the lockfile-installed Prettier CLI directly during release changelog formatting.
   - 👷 [ci] Avoid npx package resolution in the publish job while preserving the existing formatter version and arguments.
   - ✅ [ci] Keep the workflow valid under the repository's native actionlint gate.
 
-- [`4b48489`](https://github.com/Nick2bad4u/codex-skills/commit/4b48489dfe6dcd1aa6f0d210cf1423fa445b11ce "Diff: 7 files, +828 | -424") — 🐛 [fix] (sonar) Refactor management quality findings&nbsp;<sub><em>(7&nbsp;files,&nbsp;+828,&nbsp;-424)</em></sub>
+- [`29e82c4`](https://github.com/Nick2bad4u/codex-skills/commit/29e82c4ef6ab647702ec9053e1853af04e2ef23a "Diff: 7 files, +828 | -424") — 🐛 [fix] (sonar) Refactor management quality findings&nbsp;<sub><em>(7&nbsp;files,&nbsp;+828,&nbsp;-424)</em></sub>
   - ♻️ [refactor] Split complex request, retry, pagination, redaction, and bounded-response paths into focused typed helpers.
   - 🔒️ [security] Preserve fail-closed URL, credential, JSON-shape, response-size, and indeterminate-write protections across all seven management clients.
   - 🎨 [style] Centralize repeated labels, patterns, and limits while simplifying regular expressions and exception handling flagged by Sonar.
