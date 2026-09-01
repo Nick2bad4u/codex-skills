@@ -537,7 +537,9 @@ def test_sensitive_key_tokenization_has_positive_and_negative_semantic_tables(mo
         "webhookUrl",
         "webhookUrls",
         "WebhookURLs",
+        "XMLWebhookURLs",
         "MsSentinelKey",
+        "APIKeys",
         "api%54oken",
     )
     ordinary = (
@@ -557,6 +559,23 @@ def test_sensitive_key_tokenization_has_positive_and_negative_semantic_tables(mo
         assert is_sensitive(key), key
     for key in ordinary:
         assert not is_sensitive(key), key
+
+
+def test_socket_acronym_boundary_keeps_authorization_header_sensitive() -> None:
+    """An all-caps acronym cannot hide a following AuthorizationHeader pair."""
+    is_sensitive = cast("Callable[[str], bool]", member(SOCKET, "is_sensitive_key"))
+
+    assert is_sensitive("HTTPAuthorizationHeader")
+
+
+@pytest.mark.parametrize("module", PROVIDERS, ids=provider_name)
+def test_sensitive_key_tokenization_is_linear_safe_for_long_acronym_prefixes(module: ModuleType) -> None:
+    """Long acronym segments cannot trigger regex backtracking or hide a following API key."""
+    is_sensitive = cast("Callable[[str], bool]", member(module, "is_sensitive_key"))
+    long_acronym = "A" * 100_000
+
+    assert is_sensitive(f"{long_acronym}_APIKeys")
+    assert not is_sensitive(f"{long_acronym}_Configuration")
 
 
 @pytest.mark.parametrize("module", PROVIDERS, ids=provider_name)

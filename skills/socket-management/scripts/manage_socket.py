@@ -72,10 +72,6 @@ GET_RETRYABLE_STATUS_CODES = frozenset(
 )
 WRITE_INDETERMINATE_STATUS_CODES = frozenset({HTTP_REQUEST_TIMEOUT, HTTP_TOO_MANY_REQUESTS, *range(500, 600)})
 PATH_PARAMETER = re.compile(r"\{([^{}]+)\}")
-IDENTIFIER_ACRONYM_BOUNDARY = re.compile(r"([A-Z]++)([A-Z][a-z])")
-IDENTIFIER_ACRONYM_PLURAL = re.compile(r"([A-Z]{2,}+)s\b")
-IDENTIFIER_CASE_BOUNDARY = re.compile(r"([a-z0-9])([A-Z])")
-IDENTIFIER_SEPARATOR = re.compile(r"[^A-Za-z0-9]+")
 PERCENT_ESCAPE = re.compile(r"%[0-9A-Fa-f]{2}")
 RESIDUAL_ESCAPE_LIKE = re.compile(r"%(?:[A-Za-z0-9]{2}|[A-Za-z0-9](?![A-Za-z0-9]))")
 AUTHORIZATION_ASSIGNMENT = re.compile(
@@ -726,13 +722,44 @@ def build_plan(arguments: argparse.Namespace, context: SocketContext) -> Request
     )
 
 
+def split_identifier_segment(segment: str) -> list[str]:
+    """Split one ASCII alphanumeric identifier segment in deterministic linear time."""
+    words: list[str] = []
+    word_start = 0
+    for index in range(1, len(segment)):
+        previous = segment[index - 1]
+        current = segment[index]
+        following = segment[index + 1] if index + 1 < len(segment) else ""
+        acronym_plural_suffix = following == "s" and index + 2 == len(segment)
+        if current.isupper() and (
+            previous.islower()
+            or previous.isdigit()
+            or (previous.isupper() and following.islower() and not acronym_plural_suffix)
+        ):
+            words.append(segment[word_start:index])
+            word_start = index
+    words.append(segment[word_start:])
+    return words
+
+
+def identifier_words(value: str) -> list[str]:
+    """Split an identifier on ASCII separators and semantic case boundaries."""
+    words: list[str] = []
+    segment_start = 0
+    for index, character in enumerate(value):
+        if character.isascii() and character.isalnum():
+            continue
+        if segment_start < index:
+            words.extend(split_identifier_segment(value[segment_start:index]))
+        segment_start = index + 1
+    if segment_start < len(value):
+        words.extend(split_identifier_segment(value[segment_start:]))
+    return words
+
+
 def semantic_key_tokens(key: str) -> tuple[str, ...]:
     """Tokenize separators and camel/Pascal boundaries without suffix collisions."""
-    decoded = parse.unquote_plus(key)
-    protected_plurals = IDENTIFIER_ACRONYM_PLURAL.sub(r"\1S", decoded)
-    with_acronyms = IDENTIFIER_ACRONYM_BOUNDARY.sub(r"\1 \2", protected_plurals)
-    with_boundaries = IDENTIFIER_CASE_BOUNDARY.sub(r"\1 \2", with_acronyms)
-    return tuple(part.casefold() for part in IDENTIFIER_SEPARATOR.split(with_boundaries) if part)
+    return tuple(word.casefold() for word in identifier_words(parse.unquote_plus(key)))
 
 
 def is_sensitive_key(key: str) -> bool:

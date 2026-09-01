@@ -80,9 +80,6 @@ GET_RETRYABLE_STATUS_CODES = frozenset(
 )
 API_VERSION = re.compile(r"^\d{4}-\d{2}-\d{2}(?:~(?:beta|experimental))?$")
 PATH_PARAMETER = re.compile(r"\{([^{}]+)\}")
-CAMEL_BOUNDARY = re.compile(r"(?<=[a-z0-9])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z])")
-ACRONYM_PLURAL = re.compile(r"([A-Z]{2,}+)s\b")
-KEY_SEPARATOR = re.compile(r"[^A-Za-z0-9]+")
 SENSITIVE_NOUNS = frozenset(
     {"authorization", "cookie", "credential", "password", "secret", "session", "token", "webhook"}
 )
@@ -251,12 +248,45 @@ def as_string_list(value: object) -> list[str]:
     return cast("list[str]", value)
 
 
+def split_identifier_segment(segment: str) -> list[str]:
+    """Split one ASCII alphanumeric identifier segment in deterministic linear time."""
+    words: list[str] = []
+    word_start = 0
+    for index in range(1, len(segment)):
+        previous = segment[index - 1]
+        current = segment[index]
+        following = segment[index + 1] if index + 1 < len(segment) else ""
+        acronym_plural_suffix = following == "s" and index + 2 == len(segment)
+        if current.isupper() and (
+            previous.islower()
+            or previous.isdigit()
+            or (previous.isupper() and following.islower() and not acronym_plural_suffix)
+        ):
+            words.append(segment[word_start:index])
+            word_start = index
+    words.append(segment[word_start:])
+    return words
+
+
+def identifier_words(value: str) -> list[str]:
+    """Split an identifier on ASCII separators and semantic case boundaries."""
+    words: list[str] = []
+    segment_start = 0
+    for index, character in enumerate(value):
+        if character.isascii() and character.isalnum():
+            continue
+        if segment_start < index:
+            words.extend(split_identifier_segment(value[segment_start:index]))
+        segment_start = index + 1
+    if segment_start < len(value):
+        words.extend(split_identifier_segment(value[segment_start:]))
+    return words
+
+
 def key_tokens(key: str) -> tuple[str, ...]:
     """Tokenize separator, camelCase, and PascalCase field names semantically."""
     decoded = decoded_parameter_name(key)
-    protected_plurals = ACRONYM_PLURAL.sub(r"\1S", decoded)
-    separated = CAMEL_BOUNDARY.sub(" ", protected_plurals)
-    tokens = KEY_SEPARATOR.sub(" ", separated).casefold().split()
+    tokens = (word.casefold() for word in identifier_words(decoded))
     return tuple(SINGULAR_KEY_TOKENS.get(token, token) for token in tokens)
 
 
