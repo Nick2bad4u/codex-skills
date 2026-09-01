@@ -5,7 +5,7 @@
 
 ## ✨ What's Changed
 
-- <b>Commit Range: ➡️</b> [`v1.4.1...3b3017f`](https://github.com/Nick2bad4u/codex-skills/compare/v1.4.1...3b3017fca6f4e1b4ec91ddb8ca48f23abe4f1d50 "View full commit range on GitHub")
+- <b>Commit Range: ➡️</b> [`v1.4.1...68cf6cd`](https://github.com/Nick2bad4u/codex-skills/compare/v1.4.1...68cf6cddbaca1646eb46c35f0863e447165fdd31 "View full commit range on GitHub")
 
 ### 🛠️ Bug Fixes
 
@@ -36,6 +36,10 @@
   - 📝 [docs] Align skill procedures and API references with the hardened command behavior.
 
 ### 📝 Documentation
+
+- [`5079e93`](https://github.com/Nick2bad4u/codex-skills/commit/5079e93f52e4fb42c4cb4586cbda3e09efc1b9ad "Diff: 1 file, +14 | -1") — _(changelog)_ Record final Sonar remediation&nbsp;<sub><em>(1&nbsp;file,&nbsp;+14,&nbsp;-1)</em></sub>
+  - 📝 [docs] Add the residual complexity and credential-tokenization fixes to the complete post-v1.4.1 history.
+  - 🎨 [style] Preserve deterministic output under the pinned Prettier formatter.
 
 - [`223be9c`](https://github.com/Nick2bad4u/codex-skills/commit/223be9ca71309118b6f58dea29b0e85aa486b0cd "Diff: 1 file, +11 | -1") — _(changelog)_ Record dependency lock repair&nbsp;<sub><em>(1&nbsp;file,&nbsp;+11,&nbsp;-1)</em></sub>
   - 📝 [docs] Add the corrected Python artifact-hash commit to the complete post-v1.4.1 release range.
@@ -75,6 +79,10 @@
 - Ensured consistent formatting across files for better readability.
 
 ### 👷 CI/CD
+
+- [`68cf6cd`](https://github.com/Nick2bad4u/codex-skills/commit/68cf6cddbaca1646eb46c35f0863e447165fdd31 "Diff: 1 file, +3 | -0") — _(release)_ Stabilize generated changelog formatting&nbsp;<sub><em>(1&nbsp;file,&nbsp;+3,&nbsp;-0)</em></sub>
+  - 🎨 [style] Run the pinned Prettier binary twice after git-cliff so generated Markdown reaches a fixed point.
+  - 👷 [ci] Check formatting immediately before the aggregate package validation and keep publication fail closed.
 
 - [`ec6a59e`](https://github.com/Nick2bad4u/codex-skills/commit/ec6a59ec23c0f33a659c8edf9bb33ffa535533ab "Diff: 1 file, +123 | -30") — _(release)_ Make publication fail closed&nbsp;<sub><em>(1&nbsp;file,&nbsp;+123,&nbsp;-30)</em></sub>
   - 🔒️ [ci] Serialize release runs and reject malformed, unreachable, or previously used version targets before mutation.
