@@ -12,13 +12,14 @@ Use this reference when a Python repository needs the user's strict local qualit
 - [pytest](#pytest)
 - [VS Code Settings](#vs-code-settings)
 - [npm Scripts For Python Repos](#npm-scripts-for-python-repos)
+- [Auditor Contract](#auditor-contract)
 - [Fix Strategy](#fix-strategy)
 
 ## Baseline Files
 
 - `pyproject.toml`: Ruff, mypy, Pyright, and pytest configuration.
 - `.vscode/settings.json`: editor integration for Ruff, Pylance/Pyright, pytest, and the preferred interpreter.
-- One authoritative dependency resolution: a pinned `requirements-dev.txt`, standardized `pylock.toml` or `pylock.<name>.toml`, or the repository's tool-specific lockfile.
+- One authoritative dependency resolution: an exact-pinned `requirements-dev.txt`, an all-entry sha256-locked `requirements-dev.in`, standardized `pylock.toml` or `pylock.<name>.toml`, or the repository's tool-specific lockfile.
 - `package.json`: npm scripts only when the repo already uses npm as a command runner or publishes a skill/package through npm.
 
 ## Environment And Dependencies
@@ -29,7 +30,6 @@ For a conventional pinned requirements workflow:
 
 ```powershell
 python -m venv .venv
-.\.venv\Scripts\python.exe -m pip install --upgrade pip
 .\.venv\Scripts\python.exe -m pip install -r requirements-dev.txt
 $env:Path = (Resolve-Path '.\.venv\Scripts').Path + ';' + $env:Path
 ```
@@ -38,7 +38,6 @@ For a standardized lock workflow whose installer supports PEP 751:
 
 ```powershell
 python -m venv .venv
-.\.venv\Scripts\python.exe -m pip install --upgrade pip
 .\.venv\Scripts\python.exe -m pip install -r pylock.toml
 $env:Path = (Resolve-Path '.\.venv\Scripts').Path + ';' + $env:Path
 ```
@@ -69,6 +68,19 @@ ruff==0.15.20
 ```
 
 Keep direct and transitive versions in the authoritative resolution when the repo intentionally wants reproducible checker behavior. Align CI cache keys and install commands with that same file.
+
+The audited pip profiles deliberately use a small grammar. They accept exactly one `-r` target and no package arguments, direct URLs, nested requirements, index URLs, trusted hosts, or extra installer options:
+
+```text
+python -m pip install -r requirements-dev.txt
+python -m pip install --require-hashes -r requirements-dev.in
+python -m pip install -r pylock.toml
+python -m pip install -r pylock.<lowercase-name>.toml
+```
+
+Every requirements entry must use an exact `==` pin. The selected resolution must pin `ruff`, `mypy`, `pyright`, and `pytest`; the Ruff pin must satisfy `[tool.ruff].required-version`. In the hash-checked profile, every direct and transitive requirement entry must carry one or more syntactically valid `sha256` hashes. `pylock` and `uv.lock` profiles must contain structurally valid package names, versions, artifacts, and sha256 hashes rather than merely being nonempty. Registry packages and all four invoked strict tools require hashed artifacts.
+
+Named locks use only `pylock.<name>.toml`, where `<name>` is one lowercase ASCII alphanumeric/hyphen identifier of at most 32 characters. Do not put credentials, tokens, paths, environment expansion, or multiple dotted segments in a lock name.
 
 ## Ruff
 
@@ -141,7 +153,9 @@ strict = true
 ]
 ```
 
-Use `T201` only in CLI or rendering files that own user-facing output. Use `PLR091*`, `C901`, or security ignores only after checking whether a small typed helper, dataclass, adapter, or fixed argument array removes the issue.
+The auditor treats the displayed ignore, unfixable, and test assertion entries as a maximum allowlist: omitting one is stricter and remains valid, while adding another rule or pattern fails. It also rejects legacy/root-level suppression keys and `extend-ignore`, `extend-unfixable`, or `extend-per-file-ignores`. The required `extend-exclude` entries may be supplemented only with these generated or external directories: `.bzr`, `.git`, `.hg`, `.nox`, `.svn`, `.tox`, `__pypackages__`, `env`, `htmlcov`, `third_party`, and `tmp`. Root-wide values such as `.`, `*`, `**`, and `**/*` are never safe exclusions.
+
+Use `T201` only as a local, justified suppression in CLI or rendering files that own user-facing output; it is not part of the complete-profile global allowlist. Use `PLR091*`, `C901`, or security ignores only after checking whether a small typed helper, dataclass, adapter, or fixed argument array removes the issue.
 
 ## mypy
 
@@ -153,6 +167,32 @@ python_version = "3.14"
 files = ["."]
 mypy_path = "."
 cache_dir = ".cache/.mypy_cache"
+exclude = '''(?x)(
+    (^|/)\.bzr/
+    | (^|/)\.cache/
+    | (^|/)\.git/
+    | (^|/)\.hg/
+    | (^|/)\.mypy_cache/
+    | (^|/)\.nox/
+    | (^|/)\.pytest_cache/
+    | (^|/)\.ruff_cache/
+    | (^|/)\.svn/
+    | (^|/)\.tox/
+    | (^|/)\.venv/
+    | (^|/)__pycache__/
+    | (^|/)__pypackages__/
+    | (^|/)build/
+    | (^|/)coverage/
+    | (^|/)dist/
+    | (^|/)env/
+    | (^|/)htmlcov/
+    | (^|/)node_modules/
+    | (^|/)site-packages/
+    | (^|/)third_party/
+    | (^|/)tmp/
+    | (^|/)vendor/
+    | (^|/)venv/
+)'''
 strict = true
 disallow_any_decorated = true
 disallow_any_unimported = true
@@ -185,7 +225,7 @@ enable_error_code = [
 ]
 ```
 
-Exclude caches, virtual environments, build output, `coverage`, `node_modules`, and vendored folders. Keep report output out of source packages unless the repo intentionally publishes it.
+Exclude caches, virtual environments, build output, `coverage`, `node_modules`, and vendored folders. The audited exclusion grammar is intentionally limited to anchored `(^|/)<known-directory>/` alternatives; catch-all regexes, arbitrary branches, duplicate branches, and root-wide patterns fail. Do not add `[[tool.mypy.overrides]]`, `ignore_errors`, `ignore_missing_imports`, disabled error codes, `follow_imports = "skip"`/`"silent"`, or explicit settings that negate `strict = true` to make the profile pass. Keep report output out of source packages unless the repo intentionally publishes it.
 
 ## Pyright
 
@@ -233,7 +273,9 @@ reportImplicitOverride = true
 reportUnnecessaryTypeIgnoreComment = true
 ```
 
-Add explicit `report... = true` diagnostics when a repo wants a fully pinned editor/CLI policy instead of relying on Pyright defaults. Keep `.vscode/settings.json` aligned with `python.analysis.typeCheckingMode = "strict"`.
+Add explicit `report... = true` diagnostics when a repo wants a fully pinned editor/CLI policy instead of relying on Pyright defaults. Every configured `report...` value in the audited profile must be `true` or `"error"`; adding a `false`, `"none"`, `"information"`, or `"warning"` report value fails even when that field is not part of the baseline table. `ignore`, `executionEnvironments`, and `diagnosticSeverityOverrides` must be absent or empty because they can bypass root strictness.
+
+The required exclusions may be supplemented only with `**/.bzr`, `**/.git`, `**/.hg`, `**/.nox`, `**/.svn`, `**/.tox`, `**/__pypackages__`, `**/env`, `**/htmlcov`, `**/third_party`, and `**/tmp`. Other additions, especially `.`, `*`, `**`, or `**/*`, fail. Keep `.vscode/settings.json` aligned with `python.analysis.typeCheckingMode = "strict"`.
 
 ## pytest
 
@@ -243,6 +285,22 @@ addopts = ["--strict-config", "--strict-markers", "--import-mode=importlib"]
 filterwarnings = ["error"]
 pythonpath = ["."]
 testpaths = ["."]
+norecursedirs = [
+ ".*",
+ "__pycache__",
+ "__pypackages__",
+ "build",
+ "coverage",
+ "dist",
+ "env",
+ "htmlcov",
+ "node_modules",
+ "site-packages",
+ "third_party",
+ "tmp",
+ "vendor",
+ "venv"
+]
 cache_dir = ".cache/.pytest_cache"
 junit_duration_report = "call"
 junit_family = "xunit2"
@@ -256,7 +314,7 @@ strict_parametrization_ids = true
 strict_xfail = true
 ```
 
-If the repo has no tests, add focused tests for Python helpers instead of making `pytest` ignore exit code 5. Treat warnings as errors.
+If the repo has no tests, add focused tests for Python helpers instead of making `pytest` ignore exit code 5. Treat warnings as errors. The shown `norecursedirs` list is an exact allowlist for generated, vendored, and environment directories. Do not add collection-only/setup-only/help modes, config overrides, root-wide ignore/deselect options, collection-ignore globs, extra `norecursedirs` patterns, or custom discovery patterns that replace pytest's defaults; the auditor treats those additive surfaces as analysis bypasses.
 
 ## VS Code Settings
 
@@ -321,14 +379,49 @@ Add bootstrap scripts that match the authoritative dependency workflow; do not i
 {
  "scripts": {
   "python:bootstrap": "python -m pip install -r requirements-dev.txt",
-  "python:venv": "python -m venv .venv && .venv\\Scripts\\activate && python -m pip install --upgrade pip && python -m pip install -r requirements-dev.txt"
+  "python:venv": "python -m venv .venv && .venv\\Scripts\\python.exe -m pip install -r requirements-dev.txt"
  }
 }
 ```
 
-For a supported standardized lock on Windows, replace both install targets with `pylock.toml`. For a uv project, prefer `"python:bootstrap": "uv sync --frozen"` and let uv create or synchronize the environment.
+Keep bootstrap commands in one of these audited profiles:
+
+- Pinned requirements: both scripts install `requirements-dev.txt`; `python:venv` first creates `.venv`, then either invokes `.venv\Scripts\python.exe`/`.venv/bin/python` directly or performs one exact local activation before invoking bare `python`.
+- Hash-checked requirements input: both scripts install `requirements-dev.in` with `--require-hashes`; `python:venv` uses the same local-interpreter or exact-activation rule.
+- Supported standardized lock: both scripts install `pylock.toml` or the exact same safe `pylock.<name>.toml`; `python:venv` uses the same local-interpreter or exact-activation rule.
+- Frozen uv: both scripts are `uv sync --frozen`, with `uv.lock` present; uv owns environment creation and synchronization.
+
+The selected requirements or lock file must exist, and `python:bootstrap` and `python:venv` must select the same profile and source. A `pip` self-upgrade, global interpreter without activation, activation-name substring, second install target, or any other intermediate command is outside the audited grammar. Do not add pipes, fallback operators, downloads, inline interpreters, or parallel dependency sources to these bootstrap scripts.
+
+All required enforcement chains use `&&` as their only operator. `||`, pipes, background `&`, semicolons, redirects, substitutions, multiline commands, and appended unmodeled commands fail. Exact `npm run <script>` aliases may compose the graph; extra npm arguments do not. Leaf commands must be fully modeled strict invocations, not just mention a tool name. The mypy and Pyright leaves take no command-line scope replacement and therefore use the audited root `files`/`include` configuration. Help/version modes, pytest collection/fixture/setup-only modes, pytest configuration overrides, fixture text, `exit 0`, and similar no-op forms fail.
+
+Repositories may route `test:python` through the exact helper prefix `node tools/run-pytest.mjs`; a filename substring or different path is not equivalent. `node tools/validate-codecov-report.mjs` is the only additional modeled Node helper and accepts no arguments. The auditor parses these commands as data and never executes either helper.
 
 Keep `check:python` as the aggregate release gate. Run `format:python` before review when formatting drift is expected; otherwise inspect diagnostics first.
+
+## Auditor Contract
+
+`scripts/audit_python_strict.py` is read-only and performs static configuration and npm-script graph analysis. It never executes package scripts, expands variables, resolves shell substitutions, imports project code, or follows commands into the shell.
+
+The complete audited profile consists of every concrete setting shown above:
+
+- Ruff core, source root, cache, required/allowed exclusions, formatter, analyzer, broad lint/fix selection, bounded ignores/unfixable/per-file ignores, pydocstyle, and strict type-checking imports.
+- mypy Python version, files/import root, cache, anchored allowlisted exclusions, no catch-all override/suppression, strict and warning settings, extra error codes, and every `coverage/mypy` report path.
+- Pyright include/import roots, required/allowed exclusions, no ignore/environment override, Python version/platform, strict inference and reachability, unknown-type errors, and no downgraded `report...` setting.
+- pytest strict flags, warning errors, discovery roots, bounded generated-directory recursion exclusions, cache, and JUnit settings.
+- VS Code Ruff formatting/linting, strict workspace analysis, pytest selection, workspace-local interpreter, and environment-backed Ruff behavior.
+- When `package.json` exists, string-valued npm scripts whose bounded static dependency graph reaches the required Ruff, mypy, Pyright, pytest, and `compileall` commands. `check:python` must compose the lint, typecheck, test, and compile gates. Required leaves must include their documented operation and strict flags; fixture text, no-op modes, shell failure hiding, cycles, missing targets, substring-spoofed helpers, unmodeled appends, and incomplete aliases fail.
+- One synchronized dependency/bootstrap profile with exact pip command grammar, a local/activated venv interpreter, exact required-tool pins, Ruff version compatibility, and requirements/lock integrity as described above.
+
+`package.json` is strict JSON. VS Code settings accept comments and trailing commas, then use the same strict JSON decoder. Both reject `NaN`, `Infinity`, and `-Infinity` as structured parse failures.
+
+`--json` returns an array of records with stable `check`, `message`, and `severity` fields plus additive `expected` and `actual` context. `severity` is one of `pass`, `warn`, or `fail`; exit status is `1` when any record fails and `0` otherwise. Existing HEAD-era check IDs—including `ruff.force-exclude`, `ruff.line-length`, `mypy.strict`, `mypy.warnings`, `pyright.strict`, `pyright.unknown-types`, `pyright.inference`, `vscode.python-format`, and `vscode.pyright`—remain stable. The policy checks `ruff.exclusions`, `ruff.suppressions`, `mypy.exclusions`, `mypy.suppressions`, `pyright.exclusions`, `pyright.suppressions`, and `pytest.suppressions` are additive.
+
+The auditor reports mismatched field paths or fixed script-contract reason codes without echoing package-script command bodies, alias names, dependency targets, selected lock filenames, requirement lines, artifact URLs, or source contents. Bootstrap diagnostics expose only a fixed profile kind, existence boolean, and sanitized source class such as `requirements-pinned`, `requirements-hashed`, `pylock-default`, `pylock-named`, or `uv-lock`. Sensitive keyed values are redacted if configuration context is included. Text output retains `PASS`, `WARN`, and `FAIL` prefixes.
+
+Untrusted configuration and script analysis is bounded before diagnostics are serialized: configuration depth, nodes, collection sizes, file/string sizes, package-script count, command length, token count/length, command count, graph nodes, graph edges, dependency entries, and dependency-file size all have finite limits. Graph walking and diagnostic conversion are iterative. Exceeding a limit produces a normal failing diagnostic and exit status `1`, never a traceback or partial JSON document.
+
+A missing `package.json` is a warning because npm is conditional on the repository task runner. A missing `.vscode/settings.json` is also a warning so headless or editor-neutral repositories remain auditable. Once either optional file exists, malformed or incomplete documented settings fail.
 
 ## Fix Strategy
 

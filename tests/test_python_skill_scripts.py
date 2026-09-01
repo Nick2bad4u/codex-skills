@@ -271,7 +271,7 @@ def test_audit_schemastore_pr_discovers_untracked_git_surfaces(tmp_path: Path) -
     _ = (negative_root / "invalid.json").write_text("{}", encoding="utf-8")
     _ = (catalog_root / "catalog.json").write_text('{"schemas":[]}', encoding="utf-8")
     _ = (tmp_path / "src" / "schema-validation.jsonc").write_text(
-        '{"skip":["discovered.json"]}',
+        '{"missingCatalogUrl":["discovered.json"]}',
         encoding="utf-8",
     )
 
@@ -357,7 +357,13 @@ def test_audit_dependency_update_reports_multiple_ecosystems(tmp_path: Path) -> 
     assert result.returncode == 0, result.stderr
     audit = as_dict(json.loads(result.stdout))
     assert audit["package_managers"] == ["pnpm", "yarn", "bun", "go", "rust", "dotnet"]
-    assert "pnpm install --frozen-lockfile" in as_list(audit["install_commands"])
+    assert not any(
+        isinstance(command, str) and command.split(maxsplit=1)[0] in {"pnpm", "yarn", "bun"}
+        for command in as_list(audit["install_commands"])
+    )
+    assert any(
+        isinstance(warning, str) and "historical inventory only" in warning for warning in as_list(audit["warnings"])
+    )
     assert "go test ./..." in as_list(audit["validation_commands"])
     assert "cargo update" in as_list(audit["update_commands"])
 

@@ -6,6 +6,7 @@
 - [Schema Authoring](#schema-authoring)
 - [Catalog Rules](#catalog-rules)
 - [Tests And Validation](#tests-and-validation)
+- [Audit Safety](#audit-safety)
 - [References And Exceptions](#references-and-exceptions)
 - [PR Readiness](#pr-readiness)
 - [Source Links](#source-links)
@@ -31,22 +32,35 @@
 
 ## Catalog Rules
 
-- Register local schemas with a `https://www.schemastore.org/<schemaName>.json` catalog URL unless the entry intentionally points at a remote schema.
+- Register local schemas through an entry `url` or any string URL value in its `versions` map. The checker recognizes exactly `https://www.schemastore.org/` and `https://raw.githubusercontent.com/SchemaStore/schemastore/master/src/schemas/json/` as local bases; `json.schemastore.org` and a raw `main` branch URL are not aliases.
 - Keep catalog entries alphabetized/formatted by the repo formatter rather than manual whitespace.
 - Make `fileMatch` specific enough to avoid stealing common filenames from unrelated tools.
 - Prefer multiple simple patterns over clever glob syntax because language-server glob behavior varies.
 - For remote/self-hosted schemas, catalog-only changes are valid when `url` points at the maintained upstream schema.
-- For versioned schemas, keep older schema files and add a `versions` map; point `url` at the latest supported version.
+- For versioned schemas, keep older schema files and add a string-to-string `versions` map; point `url` at the latest supported version. A present non-object map or non-string value is structurally invalid.
 
 ## Tests And Validation
 
-- Add positive tests for every new schema and every new meaningful object/branch/enum/path.
+- Add positive tests for every new schema and every new meaningful object/branch/enum/path unless the schema is intentionally listed in `skiptest`.
 - Add negative tests for constraints that should reject invalid files, especially required fields, enum-only values, incompatible options, and strict object boundaries.
 - JSON, YAML, YML, and TOML test files are supported.
 - Every test file needs the correct schema association as enforced by `node ./cli.js check`.
 - Run `node ./cli.js check --schema-name=<schemaName.json>` for touched local schemas.
 - Run full `node ./cli.js check` after touching `catalog.json`, `schema-validation.jsonc`, shared `$ref` targets, CLI helpers, or multiple schemas with shared behavior.
-- Use `node ./cli.js coverage --schema-name=<schemaName.json>` only for schemas opted into `coverage`; strict coverage entries fail CI.
+- Use `node ./cli.js coverage --schema-name=<schemaName.json>` only for schemas opted into `coverage`; `strict: true` coverage entries are release-blocking and fail CI.
+- When `schema-validation.jsonc` changes, retain the full `node ./cli.js coverage` run in addition to any targeted coverage commands.
+- Do not create positive or negative test directories for a `skiptest` schema; SchemaStore rejects either surface before validation.
+
+## Audit Safety
+
+- Run `scripts/audit_schemastore_pr.py <repo>` from the exact Git worktree root. Automatic discovery requires Git plus an authoritative `origin/master` or `origin/main` ref whenever `HEAD` exists; missing Git, a nested/non-worktree path, a failed Git command, and a missing baseline are distinct exit-code `2` diagnostics.
+- Discovery parses `git diff --name-status -z` and `git status --porcelain=v1 -z` separately. Review `committed_changed_files`, `uncommitted_changed_files`, and both paths of every rename; committed deletions are intentionally included.
+- Repeated `--changed-file` bypasses Git for fixtures. It does not bypass path or schema-filename validation.
+- Local schema filenames must start with an ASCII letter or digit, use only ASCII letters, digits, dots, underscores, or hyphens, and end in `.json`. Unsafe control characters, whitespace, shell punctuation, and leading hyphens are rejected before command generation.
+- JSON output includes command argument arrays in `suggested_command_argv`; prefer those arrays for automation. The matching `suggested_commands` strings are rendered only after filename validation.
+- `catalog.json` is parsed as JSON, including every primary and versioned URL. `schema-validation.jsonc` is parsed with string-aware line-comment, block-comment, and trailing-comma handling. Malformed or structurally invalid inputs return an exit-code `2` machine-readable diagnostic rather than a partial audit.
+- Missing catalog registration is exempted by the union of exact filename membership in top-level `missingCatalogUrl` and `skiptest`. The sets remain semantically separate: `missingCatalogUrl` does not waive positive-test readiness, while `skiptest` does and forbids existing positive or negative test surfaces. Mentions in comments, unrelated exception arrays, `options`, or `coverage` do not count.
+- A changed schema, catalog, positive/negative test, or validation-config path that is absent or not a regular file appears in `deleted_critical_files` and forces exit code `1`; a directory at a file-only path is not treated as present.
 
 ## References And Exceptions
 
@@ -54,8 +68,8 @@
 - Self-hosted `$ref` targets are not generally supported by SchemaStore validation; prefer local copies or remote catalog entries.
 - Use `ajvNotStrictMode` only when strict-mode failures are intentional and cannot be corrected without worsening compatibility.
 - Use `highSchemaVersion` when a schema must use a newer JSON Schema draft despite weaker editor support.
-- Use `missingCatalogUrl` for partial schemas, subschemas, redirects, and intentional local files without catalog entries.
-- Use `skiptest` mainly for empty redirect schemas or schemas with external-reference behavior the local validator cannot test.
+- Use `missingCatalogUrl` for partial schemas, subschemas, redirects, and intentional local files without catalog entries while retaining normal positive/negative tests.
+- Use `skiptest` mainly for empty redirect schemas or schemas with external-reference behavior the local validator cannot test; remove both positive and negative test directories for that schema.
 - Use `options.unknownKeywords` and `options.unknownFormat` when upstream schemas or ecosystem validators rely on non-standard extensions.
 
 ## PR Readiness
